@@ -1,15 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 
-// DELETE - Annuler une vente (seulement admin)
+// DELETE /api/sales/[id] — Annuler une vente (ADMIN ONLY)
+// Next.js 15+ compatible — fixes RouteHandlerConfig type error
 export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  request: NextRequest,
+  context: any
 ) {
-  const { id } = await params;
-  const user = await getCurrentUser();
+  const { id } = await context.params;
 
+  const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
@@ -20,7 +21,10 @@ export async function DELETE(
 
   try {
     const sale = await prisma.sale.findFirst({
-      where: { id, userId: user.ownerId || user.id },
+      where: {
+        id,
+        userId: user.ownerId || user.id,
+      },
       include: { items: true },
     });
 
@@ -28,6 +32,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Vente introuvable" }, { status: 404 });
     }
 
+    // Restaure les stocks + supprime la vente
     await prisma.$transaction(async (tx) => {
       for (const item of sale.items) {
         await tx.product.update({
@@ -39,9 +44,15 @@ export async function DELETE(
       await tx.sale.delete({ where: { id } });
     });
 
-    return NextResponse.json({ success: true, message: "Vente annulée et stocks restaurés" });
+    return NextResponse.json({
+      success: true,
+      message: "Vente annulée et stocks restaurés",
+    });
   } catch (error) {
-    console.error(error);
-    return NextResponse.json({ error: "Erreur lors de l'annulation de la vente" }, { status: 500 });
+    console.error("Erreur annulation vente:", error);
+    return NextResponse.json(
+      { error: "Erreur lors de l'annulation de la vente" },
+      { status: 500 }
+    );
   }
 }
