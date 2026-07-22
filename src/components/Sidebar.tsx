@@ -52,138 +52,78 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
     }
   }, [session]);
 
-  const handleLinkClick = () => {
-    if (isMobile && onClose) {
-      onClose();
-    }
-  };
-
-  // =============================================
-  // NAVIGATION ULTRA-ROBUSTE (corrige le bug persistant "Ventes → Stock")
-  // =============================================
-  const goTo = (href: string, label: string) => {
-    console.log(`[Sidebar] Clic "${label}" → ${href}`);
-
-    // Ferme le drawer immédiatement
-    handleLinkClick();
-
-    // === SOLUTION ULTRA DIRECTE ===
-    // On utilise window.location comme méthode principale (très fiable en prod)
-    if (typeof window !== 'undefined') {
-      // Petite pause pour laisser le drawer se fermer sur mobile
-      setTimeout(() => {
-        console.log(`[Sidebar] Redirection directe vers ${href}`);
-        window.location.href = href;   // méthode la plus fiable
-      }, isMobile ? 180 : 30);
-    } else {
-      // Fallback classique
-      router.push(href);
-    }
+  const closeMobile = () => {
+    if (isMobile && onClose) onClose();
   };
 
   return (
     <Trans>
       <aside className={`${isMobile ? "w-full" : "w-64"} min-h-screen flex flex-col relative overflow-hidden`}>
-        {/* Background */}
         <div className="absolute inset-0 bg-gradient-to-br from-[#4A3F3A] via-[#5A4A42] to-[#6B5B55]" />
-        <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage: `
-              repeating-linear-gradient(90deg, transparent, transparent 50px, rgba(247, 231, 206, 0.03) 50px, rgba(247, 231, 206, 0.03) 52px),
-              repeating-linear-gradient(0deg, transparent, transparent 80px, rgba(247, 231, 206, 0.02) 80px, rgba(247, 231, 206, 0.02) 82px)
-            `,
-          }}
-        />
+        <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `repeating-linear-gradient(90deg, transparent, transparent 50px, rgba(247, 231, 206, 0.03) 50px, rgba(247, 231, 206, 0.03) 52px), repeating-linear-gradient(0deg, transparent, transparent 80px, rgba(247, 231, 206, 0.02) 80px, rgba(247, 231, 206, 0.02) 82px)` }} />
 
         <div className="relative z-10 p-6 border-b border-[#C9A9A6]/20">
           <div className="flex items-center justify-between">
-            <h1 className="font-[family-name:var(--font-playfair)] text-2xl font-semibold text-[#F7E7CE] tracking-tight">
-              SamaBoutique
-            </h1>
+            <h1 className="font-[family-name:var(--font-playfair)] text-2xl font-semibold text-[#F7E7CE] tracking-tight">SamaBoutique</h1>
             {!isMobile && <LanguageSwitcher />}
           </div>
-          <p className="text-sm text-[#C9A9A6]/80 mt-1 font-medium">
-            {session?.user?.shopName || "Bienvenue"}
-          </p>
+          <p className="text-sm text-[#C9A9A6]/80 mt-1 font-medium">{session?.user?.shopName || "Bienvenue"}</p>
         </div>
 
-        <nav 
-          className="relative z-10 flex-1 p-3 sm:p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y scroll-smooth scrollbar-thin" 
-          style={{ 
-            maxHeight: isMobile ? 'calc(100vh - 65px)' : 'calc(100vh - 115px)',
-            WebkitOverflowScrolling: 'touch',
-            overscrollBehavior: 'contain',
-            touchAction: 'pan-y',
-            scrollbarWidth: 'thin',
-            scrollBehavior: 'smooth'
-          }}
-        >
+        <nav className="relative z-10 flex-1 p-3 sm:p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y scroll-smooth scrollbar-thin" style={{ maxHeight: isMobile ? 'calc(100vh - 65px)' : 'calc(100vh - 115px)', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y', scrollbarWidth: 'thin', scrollBehavior: 'smooth' }}>
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             
+            // ✅ SOLUTION LA PLUS FIABLE POSSIBLE
+            // On utilise <a> natif + on force window.location.href au clic
+            // Cela contourne tous les problèmes de client-side routing et de cache
             return (
-              <button
+              <a
                 key={item.href}
-                onClick={() => goTo(item.href, item.label)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group text-left w-full ${
-                  isActive
-                    ? "bg-gradient-to-r from-[#C9A9A6]/20 to-[#C9A9A6]/5 text-[#F7E7CE] border border-[#C9A9A6]/30 shadow-lg shadow-[#C9A9A6]/10"
-                    : "text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 hover:border hover:border-[#C9A9A6]/20"
-                }`}
+                href={item.href}
+                onClick={(e) => {
+                  closeMobile();
+                  // Force la navigation complète (même sur mobile et après cache Vercel)
+                  if (typeof window !== 'undefined') {
+                    e.preventDefault();
+                    window.location.href = item.href;
+                  }
+                }}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${isActive ? "bg-gradient-to-r from-[#C9A9A6]/20 to-[#C9A9A6]/5 text-[#F7E7CE] border border-[#C9A9A6]/30 shadow-lg shadow-[#C9A9A6]/10" : "text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 hover:border hover:border-[#C9A9A6]/20"}`}
               >
                 <span className={`transition-transform duration-300 group-hover:scale-110 ${isActive ? "text-[#C9A9A6]" : ""}`}>
                   <Icon size={18} />
                 </span>
                 <span className="font-medium">{item.label}</span>
-              </button>
+              </a>
             );
           })}
 
           {isAdmin(session?.user?.role) && (
-            <button
-              onClick={() => goTo("/employees", "Employés")}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group text-left w-full ${
-                pathname === "/employees"
-                  ? "bg-gradient-to-r from-[#C9A9A6]/20 to-[#C9A9A6]/5 text-[#F7E7CE] border border-[#C9A9A6]/30 shadow-lg shadow-[#C9A9A6]/10"
-                  : "text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 hover:border hover:border-[#C9A9A6]/20"
-              }`}
+            <a
+              href="/employees"
+              onClick={closeMobile}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${pathname === "/employees" ? "bg-gradient-to-r from-[#C9A9A6]/20 to-[#C9A9A6]/5 text-[#F7E7CE] border border-[#C9A9A6]/30 shadow-lg shadow-[#C9A9A6]/10" : "text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 hover:border hover:border-[#C9A9A6]/20"}`}
             >
               <span className={`transition-transform duration-300 group-hover:scale-110 ${pathname === "/employees" ? "text-[#C9A9A6]" : ""}`}>
                 <UserCog size={18} />
               </span>
               <span className="font-medium">Employés</span>
-            </button>
+            </a>
           )}
 
           {catalogUrl && (
-            <a
-              href={catalogUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={handleLinkClick}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 transition-all duration-300 group"
-            >
-              <span className="transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12">
-                <Globe size={18} />
-              </span>
+            <a href={catalogUrl} target="_blank" rel="noopener noreferrer" onClick={closeMobile} className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 transition-all duration-300 group">
+              <span className="transition-transform duration-300 group-hover:scale-110 group-hover:rotate-12"><Globe size={18} /></span>
               <span className="font-medium">Mon catalogue</span>
             </a>
           )}
         </nav>
 
         <div className="relative z-10 p-4 border-t border-[#C9A9A6]/20">
-          <button
-            onClick={async () => {
-              await signOut({ redirect: false });
-              router.push("/login");
-            }}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 transition-all duration-300 w-full group"
-          >
-            <span className="transition-transform duration-300 group-hover:translate-x-1">
-              <LogOut size={18} />
-            </span>
+          <button onClick={async () => { await signOut({ redirect: false }); router.push("/login"); }} className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 transition-all duration-300 w-full group">
+            <span className="transition-transform duration-300 group-hover:translate-x-1"><LogOut size={18} /></span>
             <span className="font-medium">Déconnexion</span>
           </button>
         </div>
