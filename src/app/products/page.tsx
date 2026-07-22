@@ -9,17 +9,13 @@ import {
   Plus,
   Package,
   AlertTriangle,
-  CheckCircle,
   X,
-  Archive,
   TrendingUp,
-  Search,
   Trash2,
   Upload,
   Download,
+  Trash,
 } from "lucide-react";
-
-const productIcons = ["✨", "🎁", "💎", "🛍️", "🌟", "🏺", "🕯️", "🧴", "👜", "🧣"];
 
 export default function ProductsPage() {
   const { data: session } = useSession();
@@ -43,6 +39,7 @@ export default function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
 
   const fetchProducts = async () => {
     try {
@@ -116,6 +113,41 @@ export default function ProductsPage() {
     }
   };
 
+  // ✅ Supprimer TOUS les produits (admin)
+  const deleteAllProducts = async () => {
+    if (products.length === 0) {
+      alert("Aucun produit à supprimer");
+      return;
+    }
+
+    const confirmText = `ATTENTION !\n\nVous allez supprimer les ${products.length} produits.\n\nCette action est irréversible.\n\nTapez "SUPPRIMER" pour confirmer :`;
+
+    const userInput = prompt(confirmText);
+    if (userInput !== "SUPPRIMER") {
+      alert("Suppression annulée.");
+      return;
+    }
+
+    setDeletingAll(true);
+    try {
+      const res = await fetch("/api/products", {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        const result = await res.json();
+        await fetchProducts();
+        alert(`✅ ${result.deleted} produit(s) supprimé(s) avec succès !`);
+      } else {
+        alert("Erreur lors de la suppression en masse");
+      }
+    } catch (error) {
+      alert("Erreur réseau lors de la suppression");
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   const openRestock = (product: any) => {
     setRestockForm({
       open: true,
@@ -149,8 +181,7 @@ export default function ProductsPage() {
     }
   };
 
-  // ===================== ROBUST CSV IMPORT =====================
-  // Gère ; ou , + guillemets + accents + colonnes flexibles (Excel FR)
+  // ===================== CSV ROBUSTE + ACCENTS (amélioré) =====================
   const parseCSVLine = (line: string, delimiter: string): string[] => {
     const result: string[] = [];
     let current = "";
@@ -172,6 +203,24 @@ export default function ProductsPage() {
     return result;
   };
 
+  // Nettoie les caractères bizarres (remplace les � et nettoie les accents cassés)
+  const cleanText = (text: string): string => {
+    return text
+      .replace(/\uFFFD/g, '')           // supprime les �
+      .replace(/Ã©/g, 'é')
+      .replace(/Ã¨/g, 'è')
+      .replace(/Ã /g, 'à')
+      .replace(/Ã¢/g, 'â')
+      .replace(/Ãª/g, 'ê')
+      .replace(/Ã®/g, 'î')
+      .replace(/Ã´/g, 'ô')
+      .replace(/Ã»/g, 'û')
+      .replace(/Ã§/g, 'ç')
+      .replace(/Ã‰/g, 'É')
+      .replace(/Ã€/g, 'À')
+      .trim();
+  };
+
   const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -181,23 +230,25 @@ export default function ProductsPage() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const text = (event.target?.result as string) || "";
+        let text = (event.target?.result as string) || "";
+
+        // Nettoyage agressif des caractères corrompus
+        text = cleanText(text);
+
         const lines = text
           .trim()
           .split(/\r?\n/)
           .filter((l) => l.trim().length > 0);
 
         if (lines.length < 2) {
-          alert("Fichier vide ou invalide (au moins 1 ligne d'en-têtes + 1 produit)");
+          alert("Fichier vide ou invalide");
           setImporting(false);
           return;
         }
 
-        // Détection robuste du délimiteur (priorité ;)
         let delimiter = ",";
         if (lines[0].includes(";")) delimiter = ";";
 
-        // Parse en-têtes (normalisation FR)
         const rawHeaders = parseCSVLine(lines[0], delimiter).map((h) =>
           h
             .trim()
@@ -207,13 +258,9 @@ export default function ProductsPage() {
             .replace(/"/g, "")
         );
 
-        // Mapping flexible des colonnes (gère toutes les variantes)
         const getColumnIndex = (possibleNames: string[]): number => {
           for (let i = 0; i < rawHeaders.length; i++) {
-            const h = rawHeaders[i];
-            if (possibleNames.some((name) => h.includes(name))) {
-              return i;
-            }
+            if (possibleNames.some((name) => rawHeaders[i].includes(name))) return i;
           }
           return -1;
         };
@@ -229,9 +276,9 @@ export default function ProductsPage() {
 
         if (colIndex.name === -1) {
           alert(
-            "Colonne 'Nom du produit' introuvable.\nColonnes détectées: " +
-              rawHeaders.join(", ") +
-              "\n\nUtilisez le modèle CSV fourni."
+            "Colonne 'Nom du produit' introuvable.\n" +
+              "Colonnes détectées : " + rawHeaders.join(", ") +
+              "\n\nUtilisez le bouton « Modèle CSV »."
           );
           setImporting(false);
           e.target.value = "";
@@ -242,32 +289,24 @@ export default function ProductsPage() {
 
         for (let i = 1; i < lines.length; i++) {
           const cols = parseCSVLine(lines[i], delimiter);
-          if (!cols[colIndex.name] || cols[colIndex.name].trim() === "") continue;
+          let nameVal = cols[colIndex.name]?.trim();
+          if (!nameVal) continue;
 
-          const item = {
-            name: cols[colIndex.name]?.trim() || "",
-            category: colIndex.category >= 0 ? (cols[colIndex.category] || "").trim() : "",
-            price: colIndex.price >= 0 ? cols[colIndex.price] : "0",
-            quantity: colIndex.quantity >= 0 ? cols[colIndex.quantity] : "0",
-            lowStock: colIndex.lowStock >= 0 ? cols[colIndex.lowStock] : "5",
-            description: colIndex.description >= 0 ? (cols[colIndex.description] || "").trim() : "",
-          };
+          // Nettoyage supplémentaire sur chaque champ
+          nameVal = cleanText(nameVal);
 
-          // Validation minimale
-          if (item.name) {
-            items.push({
-              name: item.name,
-              category: item.category || "",
-              price: parseFloat(item.price.replace(",", ".")) || 0,
-              quantity: parseInt(item.quantity) || 0,
-              lowStock: parseInt(item.lowStock) || 5,
-              description: item.description || "",
-            });
-          }
+          items.push({
+            name: nameVal,
+            category: colIndex.category >= 0 ? cleanText(cols[colIndex.category] || "") : "",
+            price: parseFloat((colIndex.price >= 0 ? cols[colIndex.price] : "0").replace(",", ".")) || 0,
+            quantity: parseInt(colIndex.quantity >= 0 ? cols[colIndex.quantity] : "0") || 0,
+            lowStock: parseInt(colIndex.lowStock >= 0 ? cols[colIndex.lowStock] : "5") || 5,
+            description: colIndex.description >= 0 ? cleanText(cols[colIndex.description] || "") : "",
+          });
         }
 
         if (items.length === 0) {
-          alert("Aucun produit valide trouvé dans le fichier.\nVérifiez les colonnes et les données.");
+          alert("Aucun produit valide trouvé.");
           setImporting(false);
           e.target.value = "";
           return;
@@ -289,7 +328,7 @@ export default function ProductsPage() {
         await fetchProducts();
       } catch (err: any) {
         console.error("Erreur import CSV:", err);
-        alert("Erreur lors de l'import CSV : " + (err.message || "Vérifiez le format du fichier"));
+        alert("Erreur lors de l'import CSV : " + (err.message || "Vérifiez le fichier"));
       } finally {
         setImporting(false);
         if (e.target) e.target.value = "";
@@ -302,11 +341,12 @@ export default function ProductsPage() {
       e.target.value = "";
     };
 
+    // Lecture UTF-8 + fallback
     reader.readAsText(file, "UTF-8");
   };
-  // ===================== END ROBUST CSV =====================
+  // ===================== FIN CSV =====================
 
-  // Télécharger un modèle CSV prêt à l'emploi
+  // Télécharger modèle CSV avec BOM UTF-8 + accents
   const downloadCSVTemplate = () => {
     const headers = [
       "Nom du produit",
@@ -318,15 +358,19 @@ export default function ProductsPage() {
     ];
 
     const sampleRows = [
-      ["Savon artisanal", "Hygiène", "1500", "45", "10", "Savon naturel à base de karité"],
-      ["Huile de baobab", "Beauté", "3500", "28", "5", "Huile pure pressée à froid"],
-      ["Pagne wax", "Textile", "8500", "12", "3", "Tissu authentique 6 yards"],
+      ["Savon artisanal karité", "Hygiène", "1500", "45", "10", "Savon naturel 100% bio à base de beurre de karité"],
+      ["Huile de baobab", "Beauté", "3500", "28", "5", "Huile pure pressée à froid - 100ml"],
+      ["Pagne wax authentique", "Textile", "8500", "12", "3", "Tissu 6 yards - Motifs traditionnels"],
+      ["Crème à la mangue", "Cosmétique", "2800", "22", "6", "Crème hydratante à l'extrait de mangue"],
+      ["Thé de bissap", "Alimentation", "1200", "60", "15", "Infusion naturelle de fleurs d'hibiscus"],
+      ["Bracelet en perles", "Accessoires", "2500", "35", "8", "Bracelets faits main en perles de verre"],
     ];
 
-    const csvContent = [
-      headers.join(";"),
-      ...sampleRows.map((row) => row.map((cell) => `"${cell}"`).join(";")),
-    ].join("\n");
+    const csvContent =
+      "\uFEFF" +
+      headers.join(";") +
+      "\n" +
+      sampleRows.map((row) => row.map((cell) => `"${cell}"`).join(";")).join("\n");
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
@@ -345,19 +389,20 @@ export default function ProductsPage() {
 
   return (
     <ProtectedRoute>
-      <div className="space-y-8 max-w-7xl mx-auto">
-        <div className="flex justify-between items-center">
+      <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6">
+        {/* Header - responsive mobile + tablette */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-semibold text-[#3D2B1F]">Gestion du stock</h1>
-            <p className="text-[#5C4033]/70">{products.length} produit(s)</p>
+            <h1 className="text-2xl sm:text-3xl font-semibold text-[#3D2B1F]">Gestion du stock</h1>
+            <p className="text-[#5C4033]/70 text-sm sm:text-base">{products.length} produit(s)</p>
           </div>
-          <div className="flex gap-3 flex-wrap">
+
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
             {isAdmin(session?.user?.role) && (
               <>
-                {/* Bouton Importer CSV */}
-                <label className="px-5 py-3 border border-[#D4AF37]/40 text-[#B87333] rounded-xl flex items-center gap-2 cursor-pointer hover:bg-[#D4AF37]/10 transition btn-luxe">
+                <label className="flex-1 sm:flex-none px-4 py-2.5 sm:py-3 border border-[#D4AF37]/40 text-[#B87333] rounded-xl flex items-center justify-center gap-2 cursor-pointer hover:bg-[#D4AF37]/10 transition text-sm sm:text-base">
                   <Upload size={18} />
-                  {importing ? "Import en cours..." : "Importer CSV"}
+                  {importing ? "Import..." : "Importer CSV"}
                   <input
                     type="file"
                     accept=".csv,.txt"
@@ -367,10 +412,9 @@ export default function ProductsPage() {
                   />
                 </label>
 
-                {/* Bouton Modèle CSV */}
                 <button
                   onClick={downloadCSVTemplate}
-                  className="px-5 py-3 border border-[#D4AF37]/30 text-[#5C4033] rounded-xl flex items-center gap-2 hover:bg-white/50 transition"
+                  className="flex-1 sm:flex-none px-4 py-2.5 sm:py-3 border border-[#D4AF37]/30 text-[#5C4033] rounded-xl flex items-center justify-center gap-2 hover:bg-white/50 transition text-sm sm:text-base"
                 >
                   <Download size={18} />
                   Modèle CSV
@@ -378,33 +422,49 @@ export default function ProductsPage() {
 
                 <button
                   onClick={() => setShowForm(!showForm)}
-                  className="px-6 py-3 btn-luxe flex items-center gap-2"
+                  className="flex-1 sm:flex-none px-5 py-2.5 sm:py-3 btn-luxe flex items-center justify-center gap-2 text-sm sm:text-base"
                 >
                   {showForm ? <X size={18} /> : <Plus size={18} />}
-                  {showForm ? "Annuler" : "Ajouter un produit"}
+                  {showForm ? "Annuler" : "Ajouter"}
                 </button>
+
+                {products.length > 0 && (
+                  <button
+                    onClick={deleteAllProducts}
+                    disabled={deletingAll}
+                    className="flex-1 sm:flex-none px-4 py-2.5 sm:py-3 border border-red-300 text-red-600 hover:bg-red-50 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 text-sm sm:text-base"
+                  >
+                    <Trash size={18} />
+                    {deletingAll ? "Suppression..." : "Tout supprimer"}
+                  </button>
+                )}
               </>
             )}
           </div>
         </div>
 
-        {/* Formulaire création produit - CORRIGÉ */}
+        {/* Aide CSV */}
+        <div className="text-xs text-[#5C4033]/60 -mt-2 mb-2 px-1">
+          💡 Pour les accents : Enregistrez votre CSV en <strong>UTF-8</strong> (Excel → Enregistrer sous → CSV UTF-8)
+        </div>
+
+        {/* Formulaire création */}
         {showForm && (
-          <div className="glass p-6 rounded-2xl">
+          <div className="glass p-5 sm:p-6 rounded-2xl">
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <input
                   placeholder="Nom du produit *"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="input-warm p-3 rounded-xl"
+                  className="input-warm p-3 rounded-xl text-sm sm:text-base"
                   required
                 />
                 <input
                   placeholder="Catégorie"
                   value={form.category}
                   onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  className="input-warm p-3 rounded-xl"
+                  className="input-warm p-3 rounded-xl text-sm sm:text-base"
                 />
                 <input
                   placeholder="Prix FCFA *"
@@ -413,7 +473,7 @@ export default function ProductsPage() {
                   min="1"
                   value={form.price}
                   onChange={(e) => setForm({ ...form, price: e.target.value })}
-                  className="input-warm p-3 rounded-xl"
+                  className="input-warm p-3 rounded-xl text-sm sm:text-base"
                   required
                 />
                 <input
@@ -422,7 +482,7 @@ export default function ProductsPage() {
                   min="0"
                   value={form.quantity}
                   onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                  className="input-warm p-3 rounded-xl"
+                  className="input-warm p-3 rounded-xl text-sm sm:text-base"
                   required
                 />
                 <input
@@ -431,28 +491,28 @@ export default function ProductsPage() {
                   min="0"
                   value={form.lowStock}
                   onChange={(e) => setForm({ ...form, lowStock: e.target.value })}
-                  className="input-warm p-3 rounded-xl"
+                  className="input-warm p-3 rounded-xl text-sm sm:text-base"
                 />
               </div>
               <textarea
                 placeholder="Description (optionnel)"
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                className="w-full input-warm p-3 rounded-xl"
+                className="w-full input-warm p-3 rounded-xl text-sm sm:text-base"
                 rows={2}
               />
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="flex-1 px-6 py-3 border rounded-xl"
+                  className="flex-1 px-6 py-3 border rounded-xl text-sm sm:text-base"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 btn-luxe px-8 py-3 disabled:opacity-50"
+                  className="flex-1 btn-luxe px-8 py-3 disabled:opacity-50 text-sm sm:text-base"
                 >
                   {loading ? "Enregistrement..." : "Enregistrer le produit"}
                 </button>
@@ -461,69 +521,66 @@ export default function ProductsPage() {
           </div>
         )}
 
-        {/* Barre de recherche */}
+        {/* Recherche */}
         <input
           type="text"
           placeholder="Rechercher un produit (nom ou catégorie)..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-full p-4 rounded-2xl glass"
+          className="w-full p-3.5 sm:p-4 rounded-2xl glass text-sm sm:text-base"
         />
 
-        {/* Liste des produits */}
+        {/* Grille produits responsive */}
         {filtered.length === 0 ? (
-          <div className="glass rounded-2xl p-12 text-center">
+          <div className="glass rounded-2xl p-10 sm:p-12 text-center">
             <Package className="mx-auto mb-4 text-[#D4AF37]" size={48} />
             <p className="text-lg">Aucun produit trouvé</p>
             <p className="text-sm text-[#5C4033]/60 mt-2">
-              {searchTerm ? "Essayez une autre recherche" : "Ajoutez votre premier produit ou importez un CSV"}
+              {searchTerm ? "Essayez une autre recherche" : "Ajoutez ou importez des produits"}
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {filtered.map((p) => {
               const isLowStock = p.quantity <= (p.lowStock || 5);
               return (
-                <div key={p.id} className="glass rounded-2xl p-5 flex flex-col">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg text-[#3D2B1F]">{p.name}</h3>
-                      {p.category && (
-                        <p className="text-sm text-[#5C4033]/70">{p.category}</p>
-                      )}
+                <div key={p.id} className="glass rounded-2xl p-4 sm:p-5 flex flex-col">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-base sm:text-lg text-[#3D2B1F] break-words">{p.name}</h3>
+                      {p.category && <p className="text-xs sm:text-sm text-[#5C4033]/70 mt-0.5">{p.category}</p>}
                     </div>
-                    <span className="text-[#B87333] font-bold whitespace-nowrap">
+                    <span className="text-[#B87333] font-bold whitespace-nowrap text-sm sm:text-base">
                       {formatPrice(p.price)} FCFA
                     </span>
                   </div>
 
                   {p.description && (
-                    <p className="text-sm my-3 text-[#5C4033]/80 line-clamp-2">{p.description}</p>
+                    <p className="text-xs sm:text-sm my-2.5 text-[#5C4033]/80 line-clamp-2">{p.description}</p>
                   )}
 
                   <div className="mt-auto pt-3 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-sm font-medium ${isLowStock ? "text-red-600" : ""}`}>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xs sm:text-sm font-medium ${isLowStock ? "text-red-600" : ""}`}>
                         Stock : {p.quantity}
                       </span>
-                      {isLowStock && <AlertTriangle size={16} className="text-red-500" />}
+                      {isLowStock && <AlertTriangle size={15} className="text-red-500" />}
                     </div>
 
                     {isAdmin(session?.user?.role) && (
-                      <div className="flex gap-2">
+                      <div className="flex gap-1.5">
                         <button
                           onClick={() => openRestock(p)}
-                          className="text-sm px-3 py-1 border border-[#D4AF37]/30 rounded-lg hover:bg-[#D4AF37]/10 flex items-center gap-1"
-                          title="Réapprovisionner"
+                          className="text-xs sm:text-sm px-2.5 py-1 border border-[#D4AF37]/30 rounded-lg hover:bg-[#D4AF37]/10 flex items-center gap-1"
                         >
-                          <TrendingUp size={14} /> Réappro
+                          <TrendingUp size={13} /> Réappro
                         </button>
                         <button
                           onClick={() => deleteProduct(p.id, p.name)}
                           className="text-red-600 hover:text-red-700 p-1"
-                          title="Supprimer le produit"
+                          title="Supprimer"
                         >
-                          <Trash2 size={18} />
+                          <Trash2 size={17} />
                         </button>
                       </div>
                     )}
@@ -534,12 +591,12 @@ export default function ProductsPage() {
           </div>
         )}
 
-        {/* Modal Réapprovisionnement */}
+        {/* Modal Réappro */}
         {restockForm.open && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
             <div className="glass p-6 rounded-2xl w-full max-w-md">
               <h3 className="font-semibold mb-4 text-xl">Réapprovisionner</h3>
-              <p className="text-[#5C4033]/70 mb-4">{restockForm.productName}</p>
+              <p className="text-[#5C4033]/70 mb-4 break-words">{restockForm.productName}</p>
 
               <form onSubmit={handleRestock} className="space-y-4">
                 <div>
@@ -549,10 +606,8 @@ export default function ProductsPage() {
                     min="1"
                     placeholder="Ex: 20"
                     value={restockForm.quantity}
-                    onChange={(e) =>
-                      setRestockForm({ ...restockForm, quantity: e.target.value })
-                    }
-                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20"
+                    onChange={(e) => setRestockForm({ ...restockForm, quantity: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
                     required
                   />
                 </div>
@@ -563,18 +618,18 @@ export default function ProductsPage() {
                     placeholder="Livraison fournisseur..."
                     value={restockForm.note}
                     onChange={(e) => setRestockForm({ ...restockForm, note: e.target.value })}
-                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20"
+                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
                   />
                 </div>
-                <div className="flex gap-3 pt-2">
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <button
                     type="button"
                     onClick={() => setRestockForm({ ...restockForm, open: false })}
-                    className="flex-1 p-3 border rounded-xl"
+                    className="flex-1 p-3 border rounded-xl text-sm sm:text-base"
                   >
                     Annuler
                   </button>
-                  <button type="submit" className="flex-1 p-3 btn-luxe">
+                  <button type="submit" className="flex-1 p-3 btn-luxe text-sm sm:text-base">
                     Valider l'ajout
                   </button>
                 </div>
