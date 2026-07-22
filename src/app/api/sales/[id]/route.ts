@@ -14,7 +14,6 @@ export async function DELETE(
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
-  // Seuls les admins peuvent annuler
   if (user.role !== "admin") {
     return NextResponse.json({ error: "Seuls les administrateurs peuvent annuler une vente" }, { status: 403 });
   }
@@ -29,7 +28,6 @@ export async function DELETE(
       return NextResponse.json({ error: "Vente introuvable" }, { status: 404 });
     }
 
-    // Restaure les stocks
     await prisma.$transaction(async (tx) => {
       for (const item of sale.items) {
         await tx.product.update({
@@ -38,10 +36,7 @@ export async function DELETE(
         });
       }
 
-      // Supprime la vente (ou on peut juste la marquer cancelled)
-      await tx.sale.delete({
-        where: { id },
-      });
+      await tx.sale.delete({ where: { id } });
     });
 
     return NextResponse.json({ success: true, message: "Vente annulée et stocks restaurés" });
@@ -50,3 +45,6 @@ export async function DELETE(
     return NextResponse.json({ error: "Erreur lors de l'annulation de la vente" }, { status: 500 });
   }
 }
+'@ | Out-File -Encoding utf8 "src\app\api\sales\[id]\route.ts"
+
+Write-Host "✅ Fichier API Annuler Vente créé avec succès"

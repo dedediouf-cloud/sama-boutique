@@ -40,7 +40,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto relative">
+      <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto relative overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
         {/* Mobile Header with Hamburger */}
         <div className="lg:hidden mb-4 flex items-center justify-between">
           <button 

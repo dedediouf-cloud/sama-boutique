@@ -87,7 +87,17 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
           </p>
         </div>
 
-        <nav className="relative z-10 flex-1 p-4 space-y-1 overflow-y-auto">
+        <nav 
+          className="relative z-10 flex-1 p-3 sm:p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y scroll-smooth scrollbar-thin" 
+          style={{ 
+            maxHeight: isMobile ? 'calc(100vh - 65px)' : 'calc(100vh - 115px)',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+            touchAction: 'pan-y',
+            scrollbarWidth: 'thin',
+            scrollBehavior: 'smooth'
+          }}
+        >
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
