@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 
-// DELETE /api/sales/[id] — Annuler une vente (ADMIN ONLY)
-// Next.js 15+ compatible — fixes RouteHandlerConfig type error
+// DELETE /api/sales/[id] - Annuler une vente (ADMIN ONLY)
+// Signature standard Next.js 15+ (corrige l'erreur RouteHandlerConfig)
 export async function DELETE(
   request: NextRequest,
-  context: any
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await context.params;
+  const { id } = await params;
 
   const user = await getCurrentUser();
   if (!user) {
@@ -32,7 +32,6 @@ export async function DELETE(
       return NextResponse.json({ error: "Vente introuvable" }, { status: 404 });
     }
 
-    // Restaure les stocks + supprime la vente
     await prisma.$transaction(async (tx) => {
       for (const item of sale.items) {
         await tx.product.update({

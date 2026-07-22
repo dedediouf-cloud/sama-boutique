@@ -1,52 +1,47 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
+import { getPaymentProvider } from "@/lib/payments";
 
-// DELETE - Annuler une vente (seulement admin)
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
+export async function GET() {
   const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-  if (!user) {
-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
-  }
+  const ownerId = user.ownerId || user.id;
 
-  // Seuls les admins peuvent annuler
-  if (user.role !== "admin") {
-    return NextResponse.json({ error: "Seuls les administrateurs peuvent annuler une vente" }, { status: 403 });
+  const sales = await prisma.sale.findMany({
+    where: { userId: ownerId },
+    include: {
+      items: { include: { product: true } },
+      customer: true,
+      transactions: true,
+      delivery: true,
+      promotion: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return NextResponse.json(sales);
+}
+
+export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  if (user.role !== "admin" && user.role !== "seller") {
+    return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
 
   try {
-    const sale = await prisma.sale.findFirst({
-      where: { id, userId: user.ownerId || user.id },
-      include: { items: true },
-    });
+    const { items, customerId, paymentMethod, paymentPhone, promotionId } = await request.json();
+    const ownerId = user.ownerId || user.id;
+    const method = paymentMethod || "cash";
 
-    if (!sale) {
-      return NextResponse.json({ error: "Vente introuvable" }, { status: 404 });
-    }
+    // ... (tout le code POST que tu as déjà, sans aucune fonction DELETE)
+    // (je te donne la version propre ci-dessous si besoin)
 
-    // Restaure les stocks
-    await prisma.$transaction(async (tx) => {
-      for (const item of sale.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: { quantity: { increment: item.quantity } },
-        });
-      }
-
-      // Supprime la vente (ou on peut juste la marquer cancelled)
-      await tx.sale.delete({
-        where: { id },
-      });
-    });
-
-    return NextResponse.json({ success: true, message: "Vente annulée et stocks restaurés" });
-  } catch (error) {
+    // [Colle ici ton code POST actuel - il ne doit pas y avoir de "export async function DELETE" dans ce fichier]
+  } catch (error: any) {
     console.error(error);
-    return NextResponse.json({ error: "Erreur lors de l'annulation de la vente" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Erreur lors de la création de la vente" }, { status: 500 });
   }
 }
