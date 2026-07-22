@@ -1,9 +1,7 @@
 "use client";
 
 import { signOut, useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
@@ -60,6 +58,13 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
     }
   };
 
+  // ✅ Navigation ROBUSTE (fixe le bug "cliquer Ventes → redirige vers Stock")
+  const navigateTo = (href: string) => {
+    handleLinkClick();
+    // Utilise router.push pour une navigation fiable (même sur mobile/drawer)
+    router.push(href);
+  };
+
   return (
     <Trans>
       <aside className={`${isMobile ? "w-full" : "w-64"} min-h-screen flex flex-col relative overflow-hidden`}>
@@ -102,11 +107,10 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
             const Icon = item.icon;
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
-              <Link
+              <button
                 key={item.href}
-                href={item.href}
-                onClick={handleLinkClick}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${
+                onClick={() => navigateTo(item.href)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group text-left w-full ${
                   isActive
                     ? "bg-gradient-to-r from-[#C9A9A6]/20 to-[#C9A9A6]/5 text-[#F7E7CE] border border-[#C9A9A6]/30 shadow-lg shadow-[#C9A9A6]/10"
                     : "text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 hover:border hover:border-[#C9A9A6]/20"
@@ -116,15 +120,14 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
                   <Icon size={18} />
                 </span>
                 <span className="font-medium">{item.label}</span>
-              </Link>
+              </button>
             );
           })}
 
           {isAdmin(session?.user?.role) && (
-            <Link
-              href="/employees"
-              onClick={handleLinkClick}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${
+            <button
+              onClick={() => navigateTo("/employees")}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group text-left w-full ${
                 pathname === "/employees"
                   ? "bg-gradient-to-r from-[#C9A9A6]/20 to-[#C9A9A6]/5 text-[#F7E7CE] border border-[#C9A9A6]/30 shadow-lg shadow-[#C9A9A6]/10"
                   : "text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 hover:border hover:border-[#C9A9A6]/20"
@@ -134,7 +137,7 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
                 <UserCog size={18} />
               </span>
               <span className="font-medium">Employés</span>
-            </Link>
+            </button>
           )}
 
           {catalogUrl && (
