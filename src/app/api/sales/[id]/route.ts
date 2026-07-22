@@ -45,6 +45,3 @@ export async function DELETE(
     return NextResponse.json({ error: "Erreur lors de l'annulation de la vente" }, { status: 500 });
   }
 }
-'@ | Out-File -Encoding utf8 "src\app\api\sales\[id]\route.ts"
-
-Write-Host "✅ Fichier API Annuler Vente créé avec succès"
