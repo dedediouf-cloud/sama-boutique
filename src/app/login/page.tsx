@@ -14,6 +14,13 @@ export default function LoginPage() {
   const router = useRouter();
   const { t } = useTranslation();
 
+  // ================================================
+  // ⚠️ CHANGE CE NUMÉRO PAR LE VRAI WHATSAPP DE L'ADMIN
+  // ================================================
+  const adminWhatsApp = "+221775736910"; // ← Remplace par le vrai numéro
+  const whatsappMessage = "Bonjour, je souhaite créer un compte boutique sur SamaBoutique.";
+  const whatsappLink = `https://wa.me/${adminWhatsApp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(whatsappMessage)}`;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -104,11 +111,26 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* === AUCUN BOUTON "CRÉER UN COMPTE" === */}
-            <div className="mt-6 p-4 rounded-xl bg-red-50 border border-red-200 text-center">
-              <p className="text-sm font-semibold text-red-700">🚫 Inscription désactivée</p>
-              <p className="text-xs text-red-600 mt-1 leading-relaxed">
-                Les nouveaux comptes sont créés <strong>uniquement</strong> par l’administrateur.
+            {/* === MESSAGE AMÉLIORÉ AVEC WHATSAPP === */}
+            <div className="mt-6 p-5 rounded-2xl bg-[#FDF8F3] border border-[#D4AF37]/30 text-center">
+              <p className="text-sm font-semibold text-[#3D2B1F] mb-1">
+                Pour s’inscrire
+              </p>
+              <p className="text-[#5C4033] text-sm mb-4">
+                Contactez l’administrateur par WhatsApp
+              </p>
+
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-green-600 hover:bg-green-700 text-white font-medium text-sm transition-all active:scale-[0.98]"
+              >
+                📱 Contacter sur WhatsApp
+              </a>
+
+              <p className="text-[10px] text-[#5C4033]/60 mt-3">
+                Cliquez pour envoyer un message à l’administrateur
               </p>
             </div>
           </div>
