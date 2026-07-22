@@ -58,11 +58,27 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
     }
   };
 
-  // ✅ Navigation ROBUSTE (fixe le bug "cliquer Ventes → redirige vers Stock")
-  const navigateTo = (href: string) => {
+  // =============================================
+  // NAVIGATION ULTRA-ROBUSTE (corrige le bug persistant "Ventes → Stock")
+  // =============================================
+  const goTo = (href: string, label: string) => {
+    console.log(`[Sidebar] Clic "${label}" → ${href}`);
+
+    // Ferme le drawer immédiatement
     handleLinkClick();
-    // Utilise router.push pour une navigation fiable (même sur mobile/drawer)
-    router.push(href);
+
+    // === SOLUTION ULTRA DIRECTE ===
+    // On utilise window.location comme méthode principale (très fiable en prod)
+    if (typeof window !== 'undefined') {
+      // Petite pause pour laisser le drawer se fermer sur mobile
+      setTimeout(() => {
+        console.log(`[Sidebar] Redirection directe vers ${href}`);
+        window.location.href = href;   // méthode la plus fiable
+      }, isMobile ? 180 : 30);
+    } else {
+      // Fallback classique
+      router.push(href);
+    }
   };
 
   return (
@@ -106,10 +122,11 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            
             return (
               <button
                 key={item.href}
-                onClick={() => navigateTo(item.href)}
+                onClick={() => goTo(item.href, item.label)}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group text-left w-full ${
                   isActive
                     ? "bg-gradient-to-r from-[#C9A9A6]/20 to-[#C9A9A6]/5 text-[#F7E7CE] border border-[#C9A9A6]/30 shadow-lg shadow-[#C9A9A6]/10"
@@ -126,7 +143,7 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
 
           {isAdmin(session?.user?.role) && (
             <button
-              onClick={() => navigateTo("/employees")}
+              onClick={() => goTo("/employees", "Employés")}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group text-left w-full ${
                 pathname === "/employees"
                   ? "bg-gradient-to-r from-[#C9A9A6]/20 to-[#C9A9A6]/5 text-[#F7E7CE] border border-[#C9A9A6]/30 shadow-lg shadow-[#C9A9A6]/10"
