@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 
 // DELETE /api/sales/[id] - Annuler une vente (ADMIN ONLY)
-// Signature standard Next.js 15+ (corrige l'erreur RouteHandlerConfig)
+// Signature standard Next.js 15+ (corrige l'erreur RouteHandlerConfig sur Vercel)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,6 +32,12 @@ export async function DELETE(
       return NextResponse.json({ error: "Vente introuvable" }, { status: 404 });
     }
 
+    // Vérifier si déjà annulée
+    if (sale.paymentStatus === "cancelled") {
+      return NextResponse.json({ error: "Cette vente est déjà annulée" }, { status: 400 });
+    }
+
+    // Restaure les stocks + marque la vente comme annulée (ne supprime PAS pour garder l'historique)
     await prisma.$transaction(async (tx) => {
       for (const item of sale.items) {
         await tx.product.update({
@@ -40,7 +46,10 @@ export async function DELETE(
         });
       }
 
-      await tx.sale.delete({ where: { id } });
+      await tx.sale.update({
+        where: { id },
+        data: { paymentStatus: "cancelled" },
+      });
     });
 
     return NextResponse.json({

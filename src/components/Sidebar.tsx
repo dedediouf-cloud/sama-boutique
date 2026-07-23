@@ -143,9 +143,11 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
           <button 
             onClick={handleLogout} 
             disabled={loggingOut}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 transition-all duration-300 w-full group disabled:opacity-70 disabled:cursor-not-allowed"
+            className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group w-full disabled:opacity-70 disabled:cursor-not-allowed text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 hover:border hover:border-[#C9A9A6]/20`}
           >
-            <span className="transition-transform duration-300 group-hover:translate-x-1"><LogOut size={18} /></span>
+            <span className={`transition-transform duration-300 group-hover:scale-110`}>
+              <LogOut size={18} />
+            </span>
             <span className="font-medium">{loggingOut ? "Déconnexion..." : "Déconnexion"}</span>
           </button>
         </div>

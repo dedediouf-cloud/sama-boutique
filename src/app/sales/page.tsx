@@ -35,6 +35,7 @@ const paymentStatusLabels: Record<string, { label: string; color: string }> = {
   pending: { label: "En attente", color: "text-[#B87333]" },
   paid: { label: "Payé", color: "text-green-600" },
   failed: { label: "Échoué", color: "text-red-600" },
+  cancelled: { label: "Annulée", color: "text-red-600" },
 };
 
 const productIcons = ["✨", "🎁", "💎", "🛍️", "🌟", "🏺", "🕯️", "🧴", "👜", "🧣"];
@@ -157,7 +158,7 @@ export default function SalesPage() {
     }
   };
 
-  // ✅ Annuler une vente (ADMIN SEULEMENT)
+  // ✅ Annuler une vente (ADMIN SEULEMENT) - Optimistic UI pour instantanéité
   const cancelSale = async (saleId: string, customerName: string) => {
     if (!isAdmin(session?.user?.role)) {
       alert("Seuls les administrateurs peuvent annuler une vente");
@@ -168,21 +169,36 @@ export default function SalesPage() {
       return;
     }
 
+    // Optimistic update : statut change INSTANTANÉMENT
+    setSales(prev => 
+      prev.map(s => 
+        s.id === saleId ? { ...s, paymentStatus: "cancelled" } : s
+      )
+    );
+
     try {
       const res = await fetch(`/api/sales/${saleId}`, {
         method: "DELETE",
       });
 
+      const raw = await res.text().catch(() => "");
+      let data: any = {};
+      if (raw && raw.trim()) {
+        try { data = JSON.parse(raw); } catch { data = { error: raw }; }
+      }
+
       if (res.ok) {
         alert("✅ Vente annulée et stocks restaurés");
-        fetchSales();
         fetchProducts(); // rafraîchir les stocks
+        // Pas besoin de fetchSales() car mise à jour optimiste
       } else {
-        const err = await res.json();
-        alert(err.error || "Erreur lors de l'annulation");
+        alert(data.error || "Erreur lors de l'annulation");
+        // Rollback en cas d'erreur
+        fetchSales();
       }
     } catch (error) {
       alert("Erreur réseau lors de l'annulation");
+      fetchSales(); // rollback
     }
   };
 
@@ -610,7 +626,9 @@ export default function SalesPage() {
                         </td>
                         <td className="px-6 py-4 text-[#5C4033]">{paymentLabels[s.paymentMethod] || s.paymentMethod}</td>
                         <td className={`px-6 py-4 font-medium ${status.color} flex items-center gap-1`}>
-                          {s.paymentStatus === "pending" ? <Clock size={14} /> : s.paymentStatus === "paid" ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                          {s.paymentStatus === "pending" ? <Clock size={14} /> : 
+                           s.paymentStatus === "paid" ? <CheckCircle size={14} /> : 
+                           s.paymentStatus === "cancelled" ? <AlertCircle size={14} /> : <AlertCircle size={14} />}
                           {status.label}
                         </td>
                         <td className="px-6 py-4">
@@ -625,13 +643,16 @@ export default function SalesPage() {
                             )}
 
                             {/* Bouton Annuler Vente - ADMIN SEULEMENT */}
-                            {isAdmin(session?.user?.role) && (
+                            {isAdmin(session?.user?.role) && s.paymentStatus !== "cancelled" && (
                               <button 
                                 onClick={() => cancelSale(s.id, s.customer?.name || "Client de passage")}
                                 className="px-3 py-1 rounded-lg border border-red-300 text-red-600 text-xs hover:bg-red-50 transition-colors"
                               >
                                 Annuler
                               </button>
+                            )}
+                            {s.paymentStatus === "cancelled" && (
+                              <span className="text-xs text-red-600 font-medium px-2">Annulée</span>
                             )}
                           </div>
                         </td>
