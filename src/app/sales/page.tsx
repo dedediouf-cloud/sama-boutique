@@ -189,6 +189,7 @@ export default function SalesPage() {
   const handleSubmit = async () => {
     if (cart.length === 0) return;
     setSubmittingSale(true);
+
     try {
       const res = await fetch("/api/sales", {
         method: "POST",
@@ -202,13 +203,29 @@ export default function SalesPage() {
         }),
       });
 
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Erreur lors de la vente");
+      // === BULLETPROOF JSON PARSING ===
+      // Always read body once with text(), then parse safely.
+      // This completely prevents "Unexpected end of JSON input"
+      const rawText = await res.text().catch(() => "");
+      let data: any = {};
+
+      if (rawText && rawText.trim()) {
+        try {
+          data = JSON.parse(rawText);
+        } catch (parseError) {
+          console.warn("Réponse non-JSON reçue:", rawText);
+          data = { error: rawText || `Erreur serveur (statut ${res.status})` };
+        }
+      } else {
+        data = { error: `Erreur serveur (réponse vide, statut ${res.status})` };
       }
 
-      const sale = await res.json();
-      generateInvoice(sale);
+      if (!res.ok) {
+        throw new Error(data.error || data.message || "Erreur lors de la création de la vente");
+      }
+
+      // Success path
+      generateInvoice(data);
       setCart([]);
       setSelectedCustomer("");
       setSelectedPromotion("");
@@ -216,7 +233,9 @@ export default function SalesPage() {
       setPaymentPhone("");
       fetchProducts();
       fetchSales();
+
     } catch (err: any) {
+      console.error("Erreur validation vente:", err);
       alert(err.message || "Erreur lors de la validation de la vente");
     } finally {
       setSubmittingSale(false);
