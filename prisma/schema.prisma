@@ -80,11 +80,14 @@ model Product {
   lowStock    Int      @default(5)
   category    String?
   imageUrl    String?
+  supplierId  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id])
+
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
 
   saleItems    SaleItem[]
   stockEntries StockEntry[]

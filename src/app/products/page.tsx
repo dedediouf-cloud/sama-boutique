@@ -20,6 +20,7 @@ import {
 export default function ProductsPage() {
   const { data: session } = useSession();
   const [products, setProducts] = useState<any[]>([]);
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -28,6 +29,8 @@ export default function ProductsPage() {
     quantity: "",
     lowStock: "5",
     category: "",
+    imageUrl: "",
+    supplierId: "",
   });
   const [restockForm, setRestockForm] = useState({
     open: false,
@@ -36,6 +39,86 @@ export default function ProductsPage() {
     quantity: "",
     note: "",
   });
+
+  // ✅ Nouveau : Édition complète d'un produit (stock, photo, fournisseur)
+  const [editingProduct, setEditingProduct] = useState<any>(null);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    price: "",
+    quantity: "",
+    lowStock: "",
+    category: "",
+    imageUrl: "",
+    supplierId: "",
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const openEdit = (product: any) => {
+    setEditingProduct(product);
+    setEditForm({
+      name: product.name || "",
+      description: product.description || "",
+      price: product.price?.toString() || "",
+      quantity: product.quantity?.toString() || "",
+      lowStock: (product.lowStock || 5).toString(),
+      category: product.category || "",
+      imageUrl: product.imageUrl || "",
+      supplierId: product.supplierId || "",
+    });
+  };
+
+  const closeEdit = () => {
+    setEditingProduct(null);
+    setEditForm({
+      name: "", description: "", price: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "",
+    });
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProduct) return;
+
+    if (!editForm.name.trim()) {
+      alert("Le nom du produit est obligatoire");
+      return;
+    }
+    if (!editForm.price || parseFloat(editForm.price) <= 0) {
+      alert("Le prix doit être supérieur à 0");
+      return;
+    }
+
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/products/${editingProduct.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editForm.name,
+          description: editForm.description,
+          price: parseFloat(editForm.price),
+          quantity: parseInt(editForm.quantity) || 0,
+          lowStock: parseInt(editForm.lowStock) || 5,
+          category: editForm.category,
+          imageUrl: editForm.imageUrl || null,
+          supplierId: editForm.supplierId || null,
+        }),
+      });
+
+      if (res.ok) {
+        await fetchProducts();
+        closeEdit();
+        alert("✅ Produit mis à jour avec succès !");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || "Erreur lors de la mise à jour");
+      }
+    } catch (error) {
+      alert("Erreur réseau lors de la modification");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
   const [searchTerm, setSearchTerm] = useState("");
   const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -52,8 +135,21 @@ export default function ProductsPage() {
     }
   };
 
+  const fetchSuppliers = async () => {
+    try {
+      const res = await fetch("/api/suppliers");
+      if (res.ok) {
+        const data = await res.json();
+        setSuppliers(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error("Erreur fetch suppliers:", error);
+    }
+  };
+
   useEffect(() => {
     fetchProducts();
+    fetchSuppliers();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,11 +173,13 @@ export default function ProductsPage() {
           price: parseFloat(form.price) || 0,
           quantity: parseInt(form.quantity) || 0,
           lowStock: parseInt(form.lowStock) || 5,
+          imageUrl: form.imageUrl || null,
+          supplierId: form.supplierId || null,
         }),
       });
 
       if (res.ok) {
-        setForm({ name: "", description: "", price: "", quantity: "", lowStock: "5", category: "" });
+        setForm({ name: "", description: "", price: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "" });
         setShowForm(false);
         await fetchProducts();
         alert("Produit enregistré avec succès !");
@@ -181,7 +279,7 @@ export default function ProductsPage() {
     }
   };
 
-  // ===================== CSV ROBUSTE + ACCENTS (amélioré) =====================
+  // ===================== CSV ROBUSTE + ACCENTS (TRÈS AMÉLIORÉ) =====================
   const parseCSVLine = (line: string, delimiter: string): string[] => {
     const result: string[] = [];
     let current = "";
@@ -189,7 +287,6 @@ export default function ProductsPage() {
 
     for (let i = 0; i < line.length; i++) {
       const char = line[i];
-
       if (char === '"') {
         inQuotes = !inQuotes;
       } else if (char === delimiter && !inQuotes) {
@@ -203,22 +300,32 @@ export default function ProductsPage() {
     return result;
   };
 
-  // Nettoie les caractères bizarres (remplace les � et nettoie les accents cassés)
+  // Nettoyage puissant des caractères mal encodés (Excel Windows + UTF8 mal géré)
   const cleanText = (text: string): string => {
-    return text
-      .replace(/\uFFFD/g, '')           // supprime les �
-      .replace(/Ã©/g, 'é')
-      .replace(/Ã¨/g, 'è')
-      .replace(/Ã /g, 'à')
-      .replace(/Ã¢/g, 'â')
-      .replace(/Ãª/g, 'ê')
-      .replace(/Ã®/g, 'î')
-      .replace(/Ã´/g, 'ô')
-      .replace(/Ã»/g, 'û')
-      .replace(/Ã§/g, 'ç')
-      .replace(/Ã‰/g, 'É')
-      .replace(/Ã€/g, 'À')
-      .trim();
+    if (!text || typeof text !== "string") return "";
+
+    let str = text;
+
+    // 1. Supprime les caractères de remplacement
+    str = str.replace(/\uFFFD/g, "");
+
+    // 2. Corrections courantes Windows/Excel
+    const replacements: Record<string, string> = {
+      "Ã©": "é", "Ã¨": "è", "Ã ": "à", "Ã¢": "â", "Ãª": "ê",
+      "Ã®": "î", "Ã´": "ô", "Ã»": "û", "Ã§": "ç",
+      "Ã‰": "É", "Ã€": "À", "Ã‚": "Â", "Ã‡": "Ç",
+      "Ã¯": "ï", "Ã¼": "ü", "Ã¶": "ö", "Ã¤": "ä",
+      "Ã±": "ñ", "Ã£": "ã", "Ãµ": "õ",
+      "Ã": "à",   // cas isolé
+      "Â": "",    // parfois parasite
+    };
+
+    for (const [bad, good] of Object.entries(replacements)) {
+      str = str.replace(new RegExp(bad, "g"), good);
+    }
+
+    // 3. Nettoyage final
+    return str.trim();
   };
 
   const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -232,7 +339,7 @@ export default function ProductsPage() {
       try {
         let text = (event.target?.result as string) || "";
 
-        // Nettoyage agressif des caractères corrompus
+        // Nettoyage global puissant
         text = cleanText(text);
 
         const lines = text
@@ -246,8 +353,7 @@ export default function ProductsPage() {
           return;
         }
 
-        let delimiter = ",";
-        if (lines[0].includes(";")) delimiter = ";";
+        let delimiter = lines[0].includes(";") ? ";" : ",";
 
         const rawHeaders = parseCSVLine(lines[0], delimiter).map((h) =>
           h
@@ -275,11 +381,7 @@ export default function ProductsPage() {
         };
 
         if (colIndex.name === -1) {
-          alert(
-            "Colonne 'Nom du produit' introuvable.\n" +
-              "Colonnes détectées : " + rawHeaders.join(", ") +
-              "\n\nUtilisez le bouton « Modèle CSV »."
-          );
+          alert("Colonne 'Nom du produit' introuvable.\nColonnes détectées: " + rawHeaders.join(", "));
           setImporting(false);
           e.target.value = "";
           return;
@@ -289,11 +391,11 @@ export default function ProductsPage() {
 
         for (let i = 1; i < lines.length; i++) {
           const cols = parseCSVLine(lines[i], delimiter);
-          let nameVal = cols[colIndex.name]?.trim();
-          if (!nameVal) continue;
+          const rawName = cols[colIndex.name]?.trim();
+          if (!rawName) continue;
 
-          // Nettoyage supplémentaire sur chaque champ
-          nameVal = cleanText(nameVal);
+          const nameVal = cleanText(rawName);
+          if (!nameVal) continue;
 
           items.push({
             name: nameVal,
@@ -306,7 +408,7 @@ export default function ProductsPage() {
         }
 
         if (items.length === 0) {
-          alert("Aucun produit valide trouvé.");
+          alert("Aucun produit valide trouvé dans le fichier.");
           setImporting(false);
           e.target.value = "";
           return;
@@ -341,7 +443,6 @@ export default function ProductsPage() {
       e.target.value = "";
     };
 
-    // Lecture UTF-8 + fallback
     reader.readAsText(file, "UTF-8");
   };
   // ===================== FIN CSV =====================
@@ -349,21 +450,13 @@ export default function ProductsPage() {
   // Télécharger modèle CSV avec BOM UTF-8 + accents
   const downloadCSVTemplate = () => {
     const headers = [
-      "Nom du produit",
-      "Catégorie",
-      "Prix FCFA",
-      "Quantité",
-      "Seuil alerte stock",
-      "Description",
+      "Nom du produit", "Catégorie", "Prix FCFA", "Quantité", "Seuil alerte stock", "Description", "Photo (URL)", "Fournisseur"
     ];
 
     const sampleRows = [
-      ["Savon artisanal karité", "Hygiène", "1500", "45", "10", "Savon naturel 100% bio à base de beurre de karité"],
-      ["Huile de baobab", "Beauté", "3500", "28", "5", "Huile pure pressée à froid - 100ml"],
-      ["Pagne wax authentique", "Textile", "8500", "12", "3", "Tissu 6 yards - Motifs traditionnels"],
-      ["Crème à la mangue", "Cosmétique", "2800", "22", "6", "Crème hydratante à l'extrait de mangue"],
-      ["Thé de bissap", "Alimentation", "1200", "60", "15", "Infusion naturelle de fleurs d'hibiscus"],
-      ["Bracelet en perles", "Accessoires", "2500", "35", "8", "Bracelets faits main en perles de verre"],
+      ["Savon artisanal karité", "Hygiène", "1500", "45", "10", "Savon naturel 100% bio à base de beurre de karité", "", ""],
+      ["Huile de baobab", "Beauté", "3500", "28", "5", "Huile pure pressée à froid - 100ml", "https://exemple.com/huile.jpg", ""],
+      ["Pagne wax authentique", "Textile", "8500", "12", "3", "Tissu 6 yards - Motifs traditionnels", "", "Fournisseur XYZ"],
     ];
 
     const csvContent =
@@ -443,9 +536,8 @@ export default function ProductsPage() {
           </div>
         </div>
 
-        {/* Aide CSV */}
         <div className="text-xs text-[#5C4033]/60 -mt-2 mb-2 px-1">
-          💡 Pour les accents : Enregistrez votre CSV en <strong>UTF-8</strong> (Excel → Enregistrer sous → CSV UTF-8)
+          💡 Pour les accents : Enregistrez en <strong>CSV UTF-8</strong> (Excel → Enregistrer sous → CSV UTF-8)
         </div>
 
         {/* Formulaire création */}
@@ -493,7 +585,29 @@ export default function ProductsPage() {
                   onChange={(e) => setForm({ ...form, lowStock: e.target.value })}
                   className="input-warm p-3 rounded-xl text-sm sm:text-base"
                 />
+                <select
+                  value={form.supplierId}
+                  onChange={(e) => setForm({ ...form, supplierId: e.target.value })}
+                  className="input-warm p-3 rounded-xl text-sm sm:text-base"
+                >
+                  <option value="">Aucun fournisseur</option>
+                  {suppliers.map((s: any) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-[#5C4033] mb-1">Photo (URL)</label>
+                <input
+                  placeholder="https://exemple.com/photo-produit.jpg"
+                  value={form.imageUrl}
+                  onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+                  className="input-warm p-3 rounded-xl text-sm sm:text-base w-full"
+                />
+                <p className="text-xs text-[#5C4033]/60 mt-1">Collez l’URL d’une image (optionnel)</p>
+              </div>
+
               <textarea
                 placeholder="Description (optionnel)"
                 value={form.description}
@@ -545,10 +659,25 @@ export default function ProductsPage() {
               const isLowStock = p.quantity <= (p.lowStock || 5);
               return (
                 <div key={p.id} className="glass rounded-2xl p-4 sm:p-5 flex flex-col">
-                  <div className="flex justify-between items-start gap-2">
+                    <div className="flex justify-between items-start gap-2">
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-base sm:text-lg text-[#3D2B1F] break-words">{p.name}</h3>
-                      {p.category && <p className="text-xs sm:text-sm text-[#5C4033]/70 mt-0.5">{p.category}</p>}
+                      <div className="flex items-center gap-2">
+                        {p.imageUrl && (
+                          <img 
+                            src={p.imageUrl} 
+                            alt={p.name} 
+                            className="w-10 h-10 object-cover rounded-lg border border-[#D4AF37]/20 flex-shrink-0"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        )}
+                        <div>
+                          <h3 className="font-semibold text-base sm:text-lg text-[#3D2B1F] break-words">{p.name}</h3>
+                          {p.category && <p className="text-xs sm:text-sm text-[#5C4033]/70 mt-0.5">{p.category}</p>}
+                          {p.supplier && (
+                            <p className="text-[10px] text-[#B87333] mt-0.5">Fournisseur: {p.supplier.name}</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                     <span className="text-[#B87333] font-bold whitespace-nowrap text-sm sm:text-base">
                       {formatPrice(p.price)} FCFA
@@ -574,6 +703,12 @@ export default function ProductsPage() {
                           className="text-xs sm:text-sm px-2.5 py-1 border border-[#D4AF37]/30 rounded-lg hover:bg-[#D4AF37]/10 flex items-center gap-1"
                         >
                           <TrendingUp size={13} /> Réappro
+                        </button>
+                        <button
+                          onClick={() => openEdit(p)}
+                          className="text-xs sm:text-sm px-2.5 py-1 border border-[#D4AF37]/30 rounded-lg hover:bg-[#D4AF37]/10 flex items-center gap-1"
+                        >
+                          ✏️ Modifier
                         </button>
                         <button
                           onClick={() => deleteProduct(p.id, p.name)}
@@ -631,6 +766,113 @@ export default function ProductsPage() {
                   </button>
                   <button type="submit" className="flex-1 p-3 btn-luxe text-sm sm:text-base">
                     Valider l'ajout
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ✅ Modal Édition Produit (Stock + Photo + Fournisseur) */}
+        {editingProduct && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="glass p-6 rounded-2xl w-full max-w-lg">
+              <h3 className="font-semibold mb-4 text-xl">Modifier le produit</h3>
+              <p className="text-[#5C4033]/70 mb-4 break-words text-sm">{editingProduct.name}</p>
+
+              <form onSubmit={handleEditSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    placeholder="Nom du produit *"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                    required
+                  />
+                  <input
+                    placeholder="Catégorie"
+                    value={editForm.category}
+                    onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                  />
+                  <input
+                    placeholder="Prix FCFA *"
+                    type="number"
+                    step="1"
+                    min="1"
+                    value={editForm.price}
+                    onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                    required
+                  />
+                  <input
+                    placeholder="Quantité en stock"
+                    type="number"
+                    min="0"
+                    value={editForm.quantity}
+                    onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                  />
+                  <input
+                    placeholder="Seuil alerte stock"
+                    type="number"
+                    min="0"
+                    value={editForm.lowStock}
+                    onChange={(e) => setEditForm({ ...editForm, lowStock: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                  />
+                  <select
+                    value={editForm.supplierId}
+                    onChange={(e) => setEditForm({ ...editForm, supplierId: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                  >
+                    <option value="">Aucun fournisseur</option>
+                    {suppliers.map((s: any) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-[#5C4033] mb-1">Photo (URL)</label>
+                  <input
+                    placeholder="https://exemple.com/photo.jpg"
+                    value={editForm.imageUrl}
+                    onChange={(e) => setEditForm({ ...editForm, imageUrl: e.target.value })}
+                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                  />
+                  {editForm.imageUrl && (
+                    <img 
+                      src={editForm.imageUrl} 
+                      alt="Aperçu" 
+                      className="mt-2 w-20 h-20 object-cover rounded-lg border" 
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  )}
+                </div>
+
+                <textarea
+                  placeholder="Description"
+                  value={editForm.description}
+                  onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                  className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                  rows={2}
+                />
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={closeEdit}
+                    className="flex-1 p-3 border rounded-xl text-sm sm:text-base"
+                  >
+                    Annuler
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={savingEdit}
+                    className="flex-1 p-3 btn-luxe text-sm sm:text-base disabled:opacity-70"
+                  >
+                    {savingEdit ? "Enregistrement..." : "Enregistrer les modifications"}
                   </button>
                 </div>
               </form>
