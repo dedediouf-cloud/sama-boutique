@@ -8,40 +8,40 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  password  String
-  shopName  String
-  shopSlug  String   @unique
-  phone     String?
-  isBlocked Boolean  @default(false)
-  subscriptionAmount Float    @default(0)
-  subscriptionStatus String   @default("pending") // pending, paid, overdue
+  id                  String    @id @default(cuid())
+  email               String    @unique
+  name                String?
+  password            String
+  shopName            String
+  shopSlug            String    @unique
+  phone               String?
+  isBlocked           Boolean   @default(false)
+  subscriptionAmount  Float     @default(0)
+  subscriptionStatus  String    @default("pending") // pending, paid, overdue
   subscriptionDueDate DateTime?
   lastPaidAt          DateTime?
-  billingInterval    String   @default("monthly") // monthly, annual
-  referralCode       String   @unique
-  referredById     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  billingInterval     String    @default("monthly") // monthly, annual
+  referralCode        String    @unique
+  referredById        String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
-  products              Product[]
-  customers             Customer[]
-  sales                 Sale[]
-  reservations          Reservation[]
-  employees             Employee[]
-  stockEntries          StockEntry[]
-  deliveries            Delivery[]
-  promotions            Promotion[]
-  suppliers             Supplier[]
-  supplierOrders        SupplierOrder[]
-  inventoryCounts       InventoryCount[]
-  subscriptionPayments  SubscriptionPayment[]
-  referralRewards       ReferralReward[] @relation("ReferrerRewards")
-  rewardsFrom           ReferralReward[] @relation("ReferredRewards")
-  referredBy            User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
-  referralsMade         User[]  @relation("UserReferrals")
+  products             Product[]
+  customers            Customer[]
+  sales                Sale[]
+  reservations         Reservation[]
+  employees            Employee[]
+  stockEntries         StockEntry[]
+  deliveries           Delivery[]
+  promotions           Promotion[]
+  suppliers            Supplier[]
+  supplierOrders       SupplierOrder[]
+  inventoryCounts      InventoryCount[]
+  subscriptionPayments SubscriptionPayment[]
+  referralRewards      ReferralReward[]      @relation("ReferrerRewards")
+  rewardsFrom          ReferralReward[]      @relation("ReferredRewards")
+  referredBy           User?                 @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referralsMade        User[]                @relation("UserReferrals")
 }
 
 model StockEntry {
@@ -51,7 +51,7 @@ model StockEntry {
   createdAt DateTime @default(now())
 
   productId String
-  product   Product  @relation(fields: [productId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
 
   userId String
   user   User   @relation(fields: [userId], references: [id])
@@ -68,7 +68,7 @@ model Employee {
   userId    String
   user      User     @relation(fields: [userId], references: [id])
 
-  sales     Sale[]
+  sales Sale[]
 }
 
 model Product {
@@ -87,10 +87,11 @@ model Product {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
+  // Relation vers le fournisseur (optionnel)
   supplier Supplier? @relation(fields: [supplierId], references: [id])
 
-  saleItems    SaleItem[]
-  stockEntries StockEntry[]
+  saleItems       SaleItem[]
+  stockEntries    StockEntry[]
   inventoryCounts InventoryCount[]
 }
 
@@ -109,22 +110,22 @@ model Customer {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
-  sales         Sale[]
-  reservations  Reservation[]
+  sales        Sale[]
+  reservations Reservation[]
 }
 
 model Promotion {
-  id          String    @id @default(cuid())
-  code        String?   @unique
-  name        String
-  type        String    // percentage, fixed_amount
-  value       Float
-  minAmount   Float?
-  startDate   DateTime?
-  endDate     DateTime?
-  active      Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        String    @id @default(cuid())
+  code      String?   @unique
+  name      String
+  type      String // percentage, fixed_amount
+  value     Float
+  minAmount Float?
+  startDate DateTime?
+  endDate   DateTime?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id])
@@ -133,16 +134,16 @@ model Promotion {
 }
 
 model Sale {
-  id                  String   @id @default(cuid())
-  total               Float
-  discount            Float    @default(0)
-  finalTotal          Float
-  paymentMethod       String?  @default("cash") // cash, orange_money, wave
-  paymentStatus       String?  @default("pending") // pending, paid, failed
-  paymentRef          String?
-  deliveryType        String?  @default("pickup") // pickup, delivery
-  earnedFidelityPoints Int     @default(0)
-  createdAt           DateTime @default(now())
+  id                   String   @id @default(cuid())
+  total                Float
+  discount             Float    @default(0)
+  finalTotal           Float
+  paymentMethod        String?  @default("cash") // cash, orange_money, wave
+  paymentStatus        String?  @default("pending") // pending, paid, failed
+  paymentRef           String?
+  deliveryType         String?  @default("pickup") // pickup, delivery
+  earnedFidelityPoints Int      @default(0)
+  createdAt            DateTime @default(now())
 
   userId String
   user   User   @relation(fields: [userId], references: [id])
@@ -156,14 +157,14 @@ model Sale {
   promotionId String?
   promotion   Promotion? @relation(fields: [promotionId], references: [id])
 
-  items         SaleItem[]
-  transactions  PaymentTransaction[]
-  delivery      Delivery?
+  items        SaleItem[]
+  transactions PaymentTransaction[]
+  delivery     Delivery?
 }
 
 model PaymentTransaction {
   id        String   @id @default(cuid())
-  provider  String   // orange_money, wave
+  provider  String // orange_money, wave
   amount    Float
   reference String?
   status    String   @default("pending") // pending, paid, failed, cancelled
@@ -176,14 +177,14 @@ model PaymentTransaction {
 }
 
 model Delivery {
-  id            String   @id @default(cuid())
-  status        String   @default("pending") // pending, preparing, shipped, delivered, cancelled
-  address       String
-  phone         String?
-  notes         String?
-  deliveryDate  DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String    @id @default(cuid())
+  status       String    @default("pending") // pending, preparing, shipped, delivered, cancelled
+  address      String
+  phone        String?
+  notes        String?
+  deliveryDate DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   saleId String @unique
   sale   Sale   @relation(fields: [saleId], references: [id])
@@ -193,9 +194,9 @@ model Delivery {
 }
 
 model SaleItem {
-  id        String  @id @default(cuid())
-  quantity  Int
-  price     Float
+  id       String @id @default(cuid())
+  quantity Int
+  price    Float
 
   saleId String
   sale   Sale   @relation(fields: [saleId], references: [id])
@@ -216,18 +217,19 @@ model Supplier {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
-  orders SupplierOrder[]
+  orders   SupplierOrder[]
+  products Product[] // Relation inverse obligatoire (pour Product.supplier)
 }
 
 model SupplierOrder {
-  id           String   @id @default(cuid())
-  status       String   @default("pending") // pending, received, cancelled
+  id           String    @id @default(cuid())
+  status       String    @default("pending") // pending, received, cancelled
   total        Float
-  orderDate    DateTime @default(now())
+  orderDate    DateTime  @default(now())
   receivedDate DateTime?
   notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   supplierId String
   supplier   Supplier @relation(fields: [supplierId], references: [id])
@@ -261,7 +263,7 @@ model Reservation {
   createdAt     DateTime @default(now())
 
   userId String
-  user   User     @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
 
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id])
@@ -277,19 +279,19 @@ model SuperAdmin {
 }
 
 model InventoryCount {
-  id            String   @id @default(cuid())
-  countedQty    Int
-  systemQty     Int
-  difference    Int
-  note          String?
-  countedAt     DateTime @default(now())
-  createdAt     DateTime @default(now())
+  id         String   @id @default(cuid())
+  countedQty Int
+  systemQty  Int
+  difference Int
+  note       String?
+  countedAt  DateTime @default(now())
+  createdAt  DateTime @default(now())
 
   productId String
-  product   Product  @relation(fields: [productId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
 
   userId String
-  user   User     @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
 }
 
 model SubscriptionPayment {
@@ -304,19 +306,19 @@ model SubscriptionPayment {
   paidAt        DateTime @default(now())
 
   userId String
-  user   User     @relation(fields: [userId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
 }
 
 model SubscriptionPromotion {
   id              String   @id @default(cuid())
   name            String
   code            String?  @unique
-  discountPercent Int?     // ex: 20 pour 20%
-  discountAmount  Float?     // ex: 1000
-  monthsFree      Int        @default(0)
-  active          Boolean    @default(true)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  discountPercent Int? // ex: 20 pour 20%
+  discountAmount  Float? // ex: 1000
+  monthsFree      Int      @default(0)
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model GlobalSettings {
@@ -334,6 +336,6 @@ model ReferralReward {
   monthsGranted Int
   createdAt     DateTime @default(now())
 
-  referrer      User     @relation("ReferrerRewards", fields: [referrerId], references: [id], onDelete: Cascade)
-  referred      User     @relation("ReferredRewards", fields: [referredId], references: [id], onDelete: Cascade)
+  referrer User @relation("ReferrerRewards", fields: [referrerId], references: [id], onDelete: Cascade)
+  referred User @relation("ReferredRewards", fields: [referredId], references: [id], onDelete: Cascade)
 }
