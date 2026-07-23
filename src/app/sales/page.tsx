@@ -188,6 +188,23 @@ export default function SalesPage() {
 
   const handleSubmit = async () => {
     if (cart.length === 0) return;
+
+    // === MAXIMUM PERCEIVED SPEED ===
+    // 1. Save backup in case of error
+    const backup = {
+      cart: [...cart],
+      customer: selectedCustomer,
+      promotion: selectedPromotion,
+      method: paymentMethod,
+      phone: paymentPhone,
+    };
+
+    // 2. Clear UI + show loading **IMMEDIATELY** (before any network)
+    setCart([]);
+    setSelectedCustomer("");
+    setSelectedPromotion("");
+    setPaymentMethod("cash");
+    setPaymentPhone("");
     setSubmittingSale(true);
 
     try {
@@ -195,44 +212,38 @@ export default function SalesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: cart.map((item) => ({ productId: item.productId, quantity: item.quantity })),
-          customerId: selectedCustomer || null,
-          paymentMethod,
-          paymentPhone: paymentPhone || null,
-          promotionId: selectedPromotion || null,
+          items: backup.cart.map(i => ({ productId: i.productId, quantity: i.quantity })),
+          customerId: backup.customer || null,
+          paymentMethod: backup.method,
+          paymentPhone: backup.phone || null,
+          promotionId: backup.promotion || null,
         }),
       });
 
-      // === BULLETPROOF JSON PARSING ===
-      // Always read body once with text(), then parse safely.
-      // This completely prevents "Unexpected end of JSON input"
-      const rawText = await res.text().catch(() => "");
+      const raw = await res.text().catch(() => "");
       let data: any = {};
-
-      if (rawText && rawText.trim()) {
-        try {
-          data = JSON.parse(rawText);
-        } catch (parseError) {
-          console.warn("Réponse non-JSON reçue:", rawText);
-          data = { error: rawText || `Erreur serveur (statut ${res.status})` };
-        }
+      if (raw && raw.trim()) {
+        try { data = JSON.parse(raw); } catch { data = { error: raw }; }
       } else {
-        data = { error: `Erreur serveur (réponse vide, statut ${res.status})` };
+        data = { error: `Erreur serveur (${res.status})` };
       }
 
       if (!res.ok) {
-        throw new Error(data.error || data.message || "Erreur lors de la création de la vente");
+        // Rollback only on real failure
+        setCart(backup.cart);
+        setSelectedCustomer(backup.customer);
+        setSelectedPromotion(backup.promotion);
+        setPaymentMethod(backup.method);
+        setPaymentPhone(backup.phone);
+        throw new Error(data.error || "Erreur lors de la vente");
       }
 
-      // Success path
-      generateInvoice(data);
-      setCart([]);
-      setSelectedCustomer("");
-      setSelectedPromotion("");
-      setPaymentMethod("cash");
-      setPaymentPhone("");
+      // Success: refresh data in background
       fetchProducts();
       fetchSales();
+
+      // Defer PDF (heavy) so the button feels super fast
+      setTimeout(() => generateInvoice(data), 15);
 
     } catch (err: any) {
       console.error("Erreur validation vente:", err);

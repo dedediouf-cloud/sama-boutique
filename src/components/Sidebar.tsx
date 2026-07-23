@@ -45,6 +45,7 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [catalogUrl, setCatalogUrl] = useState("");
+  const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
     if (session?.user?.shopSlug) {
@@ -54,6 +55,23 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
 
   const closeMobile = () => {
     if (isMobile && onClose) onClose();
+  };
+
+  const handleLogout = () => {
+    // === MAXIMUM RESPONSIVENESS FOR LOGOUT ===
+    setLoggingOut(true);
+    closeMobile();                    // close drawer instantly
+
+    // Navigate to login **immediately** (this is what the user feels first)
+    // Using window.location for the absolute fastest navigation
+    if (typeof window !== "undefined") {
+      window.location.replace("/login");
+    }
+
+    // Do the actual signOut in the background (non-blocking)
+    signOut({ redirect: false }).catch(() => {
+      // Already navigating, nothing more needed
+    });
   };
 
   return (
@@ -122,9 +140,13 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
         </nav>
 
         <div className="relative z-10 p-4 border-t border-[#C9A9A6]/20">
-          <button onClick={async () => { await signOut({ redirect: false }); router.push("/login"); }} className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 transition-all duration-300 w-full group">
+          <button 
+            onClick={handleLogout} 
+            disabled={loggingOut}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 transition-all duration-300 w-full group disabled:opacity-70 disabled:cursor-not-allowed"
+          >
             <span className="transition-transform duration-300 group-hover:translate-x-1"><LogOut size={18} /></span>
-            <span className="font-medium">Déconnexion</span>
+            <span className="font-medium">{loggingOut ? "Déconnexion..." : "Déconnexion"}</span>
           </button>
         </div>
       </aside>
