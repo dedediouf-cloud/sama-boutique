@@ -53,6 +53,7 @@ export default function SalesPage() {
   const [cart, setCart] = useState<{ productId: string; quantity: number; price: number; name: string }[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"pos" | "history">("pos");
+  const [submittingSale, setSubmittingSale] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -187,19 +188,25 @@ export default function SalesPage() {
 
   const handleSubmit = async () => {
     if (cart.length === 0) return;
-    const res = await fetch("/api/sales", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items: cart.map((item) => ({ productId: item.productId, quantity: item.quantity })),
-        customerId: selectedCustomer || null,
-        paymentMethod,
-        paymentPhone: paymentPhone || null,
-        promotionId: selectedPromotion || null,
-      }),
-    });
+    setSubmittingSale(true);
+    try {
+      const res = await fetch("/api/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: cart.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+          customerId: selectedCustomer || null,
+          paymentMethod,
+          paymentPhone: paymentPhone || null,
+          promotionId: selectedPromotion || null,
+        }),
+      });
 
-    if (res.ok) {
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Erreur lors de la vente");
+      }
+
       const sale = await res.json();
       generateInvoice(sale);
       setCart([]);
@@ -209,9 +216,10 @@ export default function SalesPage() {
       setPaymentPhone("");
       fetchProducts();
       fetchSales();
-    } else {
-      const error = await res.json();
-      alert(error.error || "Erreur lors de la vente");
+    } catch (err: any) {
+      alert(err.message || "Erreur lors de la validation de la vente");
+    } finally {
+      setSubmittingSale(false);
     }
   };
 
@@ -518,13 +526,19 @@ export default function SalesPage() {
                       <span>Total</span>
                       <span>{formatPrice(total)} FCFA</span>
                     </div>
-                    <button onClick={handleSubmit} className="w-full mt-4 py-3.5 rounded-xl btn-luxe font-medium flex items-center justify-center gap-2">
+                    <button 
+                      onClick={handleSubmit} 
+                      disabled={submittingSale}
+                      className="w-full mt-4 py-3.5 rounded-xl btn-luxe font-medium flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                    >
                       <Receipt size={18} />
-                      {paymentMethod === "cash"
-                        ? "Valider la vente et facturer"
-                        : paymentMethod === "orange_money"
-                        ? "Valider et demander paiement Orange Money"
-                        : "Valider et demander paiement Wave"}
+                      {submittingSale ? "Traitement en cours..." : (
+                        paymentMethod === "cash"
+                          ? "Valider la vente et facturer"
+                          : paymentMethod === "orange_money"
+                          ? "Valider et demander paiement Orange Money"
+                          : "Valider et demander paiement Wave"
+                      )}
                     </button>
                   </div>
                 </div>

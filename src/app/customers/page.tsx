@@ -23,10 +23,12 @@ import {
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", dateOfBirth: "", notes: "" });
+  const [form, setForm] = useState({ name: "", phone: "", email: "", address: "", notes: "" });
+  const [creating, setCreating] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
   const [activity, setActivity] = useState<any>(null);
-  const [editForm, setEditForm] = useState({ fidelityPoints: "", notes: "", dateOfBirth: "" });
+  const [editForm, setEditForm] = useState({ fidelityPoints: "", notes: "" });
+  const [updating, setUpdating] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
   const fetchCustomers = () => {
@@ -41,17 +43,29 @@ export default function CustomersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("/api/customers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        dateOfBirth: form.dateOfBirth ? new Date(form.dateOfBirth).toISOString() : null,
-      }),
-    });
-    setForm({ name: "", phone: "", email: "", address: "", dateOfBirth: "", notes: "" });
-    setShowForm(false);
-    fetchCustomers();
+    if (!form.name.trim()) {
+      alert("Le nom du client est obligatoire");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Erreur lors de l'enregistrement");
+      }
+      setForm({ name: "", phone: "", email: "", address: "", notes: "" });
+      setShowForm(false);
+      fetchCustomers();
+    } catch (error: any) {
+      alert(error.message || "Erreur lors de la création du client");
+    } finally {
+      setCreating(false);
+    }
   };
 
   const openCustomerDetails = (customer: any) => {
@@ -59,7 +73,6 @@ export default function CustomersPage() {
     setEditForm({
       fidelityPoints: customer.fidelityPoints.toString(),
       notes: customer.notes || "",
-      dateOfBirth: customer.dateOfBirth ? new Date(customer.dateOfBirth).toISOString().split("T")[0] : "",
     });
     fetch(`/api/customers/${customer.id}/activity`)
       .then((res) => res.json())
@@ -67,18 +80,22 @@ export default function CustomersPage() {
   };
 
   const updateCustomer = async () => {
-    await fetch(`/api/customers/${selectedCustomer.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fidelityPoints: parseInt(editForm.fidelityPoints),
-        notes: editForm.notes,
-        dateOfBirth: editForm.dateOfBirth ? new Date(editForm.dateOfBirth).toISOString() : null,
-      }),
-    });
-    fetchCustomers();
-    if (selectedCustomer) {
-      openCustomerDetails({ ...selectedCustomer, fidelityPoints: parseInt(editForm.fidelityPoints), notes: editForm.notes });
+    setUpdating(true);
+    try {
+      await fetch(`/api/customers/${selectedCustomer.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fidelityPoints: parseInt(editForm.fidelityPoints),
+          notes: editForm.notes,
+        }),
+      });
+      fetchCustomers();
+      if (selectedCustomer) {
+        openCustomerDetails({ ...selectedCustomer, fidelityPoints: parseInt(editForm.fidelityPoints), notes: editForm.notes });
+      }
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -147,20 +164,18 @@ export default function CustomersPage() {
                     <input type="text" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="w-full pl-11 pr-4 py-3 rounded-xl input-warm text-[#3D2B1F]" />
                   </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-[#5C4033] mb-1.5">Date de naissance</label>
-                  <div className="relative">
-                    <Calendar size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#B87333]/50" />
-                    <input type="date" value={form.dateOfBirth} onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })} className="w-full pl-11 pr-4 py-3 rounded-xl input-warm text-[#3D2B1F]" />
-                  </div>
-                </div>
+
               </div>
               <div>
                 <label className="block text-sm font-medium text-[#5C4033] mb-1.5">Notes</label>
                 <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]" rows={3} />
               </div>
-              <button type="submit" className="px-8 py-3.5 rounded-xl btn-luxe font-medium">
-                Enregistrer le client
+              <button 
+                type="submit" 
+                disabled={creating}
+                className="px-8 py-3.5 rounded-xl btn-luxe font-medium disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {creating ? "Enregistrement en cours..." : "Enregistrer le client"}
               </button>
             </form>
           </div>
@@ -270,14 +285,15 @@ export default function CustomersPage() {
                         <label className="block text-sm text-[#5C4033] mb-1.5">Points fidélité</label>
                         <input type="number" value={editForm.fidelityPoints} onChange={(e) => setEditForm({ ...editForm, fidelityPoints: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]" />
                       </div>
-                      <div>
-                        <label className="block text-sm text-[#5C4033] mb-1.5">Date de naissance</label>
-                        <input type="date" value={editForm.dateOfBirth} onChange={(e) => setEditForm({ ...editForm, dateOfBirth: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]" />
-                      </div>
+  
                     </div>
                     <textarea placeholder="Notes" value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] mb-4" rows={3} />
-                    <button onClick={updateCustomer} className="px-6 py-2.5 rounded-xl btn-luxe text-sm font-medium">
-                      Mettre à jour
+                    <button 
+                      onClick={updateCustomer} 
+                      disabled={updating}
+                      className="px-6 py-2.5 rounded-xl btn-luxe text-sm font-medium disabled:opacity-70"
+                    >
+                      {updating ? "Mise à jour..." : "Mettre à jour"}
                     </button>
                   </div>
 
