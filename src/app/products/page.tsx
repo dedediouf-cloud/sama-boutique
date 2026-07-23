@@ -482,7 +482,7 @@ export default function ProductsPage() {
 
   return (
     <ProtectedRoute>
-      <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6">
+      <div className="space-y-4 sm:space-y-6 max-w-7xl mx-auto px-2 sm:px-6 overflow-x-hidden w-full">
         {/* Header - responsive mobile + tablette */}
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div>
@@ -644,7 +644,7 @@ export default function ProductsPage() {
           className="w-full p-3.5 sm:p-4 rounded-2xl glass text-sm sm:text-base"
         />
 
-        {/* Grille produits responsive */}
+        {/* Grille produits - responsive parfaite, zéro débordement sur les côtés */}
         {filtered.length === 0 ? (
           <div className="glass rounded-2xl p-10 sm:p-12 text-center">
             <Package className="mx-auto mb-4 text-[#D4AF37]" size={48} />
@@ -654,68 +654,70 @@ export default function ProductsPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-1.5 sm:gap-2.5">
             {filtered.map((p) => {
               const isLowStock = p.quantity <= (p.lowStock || 5);
               return (
-                <div key={p.id} className="glass rounded-2xl p-4 sm:p-5 flex flex-col">
-                    <div className="flex justify-between items-start gap-2">
+                <div key={p.id} className="glass rounded-2xl p-2 sm:p-2.5 flex flex-col overflow-hidden min-w-0">
+                  {/* Header: image + nom + prix (très compact) */}
+                  <div className="flex gap-1.5 items-start">
+                    {p.imageUrl && (
+                      <img 
+                        src={p.imageUrl} 
+                        alt={p.name} 
+                        className="w-6 h-6 sm:w-7 sm:h-7 object-cover rounded-lg border border-[#D4AF37]/20 flex-shrink-0 mt-0.5"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    )}
+                    
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        {p.imageUrl && (
-                          <img 
-                            src={p.imageUrl} 
-                            alt={p.name} 
-                            className="w-10 h-10 object-cover rounded-lg border border-[#D4AF37]/20 flex-shrink-0"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        )}
-                        <div>
-                          <h3 className="font-semibold text-base sm:text-lg text-[#3D2B1F] break-words">{p.name}</h3>
-                          {p.category && <p className="text-xs sm:text-sm text-[#5C4033]/70 mt-0.5">{p.category}</p>}
-                          {p.supplier && (
-                            <p className="text-[10px] text-[#B87333] mt-0.5">Fournisseur: {p.supplier.name}</p>
-                          )}
-                        </div>
+                      <div className="flex justify-between gap-1">
+                        <h3 className="font-semibold text-[10.5px] sm:text-xs text-[#3D2B1F] leading-tight line-clamp-2 break-words min-w-0">
+                          {p.name}
+                        </h3>
+                        <span className="text-[#B87333] font-bold text-[10px] sm:text-xs whitespace-nowrap flex-shrink-0">
+                          {formatPrice(p.price)}
+                        </span>
+                      </div>
+                      
+                      <div className="mt-0.5">
+                        {p.category && <p className="text-[9px] text-[#5C4033]/70 truncate">{p.category}</p>}
+                        {p.supplier && <p className="text-[8px] text-[#B87333] truncate">Fourn. : {p.supplier.name}</p>}
                       </div>
                     </div>
-                    <span className="text-[#B87333] font-bold whitespace-nowrap text-sm sm:text-base">
-                      {formatPrice(p.price)} FCFA
-                    </span>
                   </div>
 
                   {p.description && (
-                    <p className="text-xs sm:text-sm my-2.5 text-[#5C4033]/80 line-clamp-2">{p.description}</p>
+                    <p className="text-[9.5px] text-[#5C4033]/75 mt-1.5 line-clamp-2 leading-tight">{p.description}</p>
                   )}
 
-                  <div className="mt-auto pt-3 flex justify-between items-center">
-                    <div className="flex items-center gap-1.5">
-                      <span className={`text-xs sm:text-sm font-medium ${isLowStock ? "text-red-600" : ""}`}>
+                  <div className="mt-auto pt-2">
+                    <div className="flex items-center text-[10px] mb-1">
+                      <span className={`font-medium ${isLowStock ? "text-red-600" : "text-[#5C4033]"}`}>
                         Stock : {p.quantity}
                       </span>
-                      {isLowStock && <AlertTriangle size={15} className="text-red-500" />}
+                      {isLowStock && <AlertTriangle size={11} className="ml-1 text-red-500" />}
                     </div>
 
                     {isAdmin(session?.user?.role) && (
-                      <div className="flex gap-1.5">
+                      <div className="flex gap-0.5">
                         <button
                           onClick={() => openRestock(p)}
-                          className="text-xs sm:text-sm px-2.5 py-1 border border-[#D4AF37]/30 rounded-lg hover:bg-[#D4AF37]/10 flex items-center gap-1"
+                          className="flex-1 text-[9px] px-1.5 py-1 border border-[#D4AF37]/25 rounded-md hover:bg-[#D4AF37]/10 flex items-center justify-center gap-0.5"
                         >
-                          <TrendingUp size={13} /> Réappro
+                          <TrendingUp size={10} /> Réappro
                         </button>
                         <button
                           onClick={() => openEdit(p)}
-                          className="text-xs sm:text-sm px-2.5 py-1 border border-[#D4AF37]/30 rounded-lg hover:bg-[#D4AF37]/10 flex items-center gap-1"
+                          className="flex-1 text-[9px] px-1.5 py-1 border border-[#D4AF37]/25 rounded-md hover:bg-[#D4AF37]/10 flex items-center justify-center gap-0.5"
                         >
-                          ✏️ Modifier
+                          Modifier
                         </button>
                         <button
                           onClick={() => deleteProduct(p.id, p.name)}
-                          className="text-red-600 hover:text-red-700 p-1"
-                          title="Supprimer"
+                          className="px-1 flex items-center justify-center text-red-600 hover:text-red-700"
                         >
-                          <Trash2 size={17} />
+                          <Trash2 size={13} />
                         </button>
                       </div>
                     )}
@@ -773,27 +775,27 @@ export default function ProductsPage() {
           </div>
         )}
 
-        {/* ✅ Modal Édition Produit (Stock + Photo + Fournisseur) */}
+        {/* ✅ Modal Édition Produit - responsive et bien agencé */}
         {editingProduct && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-            <div className="glass p-6 rounded-2xl w-full max-w-lg">
-              <h3 className="font-semibold mb-4 text-xl">Modifier le produit</h3>
-              <p className="text-[#5C4033]/70 mb-4 break-words text-sm">{editingProduct.name}</p>
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="glass p-3 sm:p-4 rounded-2xl w-full max-w-[96vw] sm:max-w-lg max-h-[92vh] overflow-y-auto">
+              <h3 className="font-semibold mb-2 sm:mb-3 text-lg sm:text-xl">Modifier le produit</h3>
+              <p className="text-[#5C4033]/70 mb-3 sm:mb-4 text-xs sm:text-sm break-words">{editingProduct.name}</p>
 
-              <form onSubmit={handleEditSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <form onSubmit={handleEditSubmit} className="space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5">
                   <input
                     placeholder="Nom du produit *"
                     value={editForm.name}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-2.5 rounded-xl border border-[#D4AF37]/20 text-xs sm:text-sm"
                     required
                   />
                   <input
                     placeholder="Catégorie"
                     value={editForm.category}
                     onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
-                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-2.5 rounded-xl border border-[#D4AF37]/20 text-xs sm:text-sm"
                   />
                   <input
                     placeholder="Prix FCFA *"
@@ -802,7 +804,7 @@ export default function ProductsPage() {
                     min="1"
                     value={editForm.price}
                     onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
-                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-2.5 rounded-xl border border-[#D4AF37]/20 text-xs sm:text-sm"
                     required
                   />
                   <input
@@ -811,7 +813,7 @@ export default function ProductsPage() {
                     min="0"
                     value={editForm.quantity}
                     onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
-                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-2.5 rounded-xl border border-[#D4AF37]/20 text-xs sm:text-sm"
                   />
                   <input
                     placeholder="Seuil alerte stock"
@@ -819,12 +821,12 @@ export default function ProductsPage() {
                     min="0"
                     value={editForm.lowStock}
                     onChange={(e) => setEditForm({ ...editForm, lowStock: e.target.value })}
-                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-2.5 rounded-xl border border-[#D4AF37]/20 text-xs sm:text-sm"
                   />
                   <select
                     value={editForm.supplierId}
                     onChange={(e) => setEditForm({ ...editForm, supplierId: e.target.value })}
-                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-2.5 rounded-xl border border-[#D4AF37]/20 text-xs sm:text-sm"
                   >
                     <option value="">Aucun fournisseur</option>
                     {suppliers.map((s: any) => (
@@ -834,18 +836,18 @@ export default function ProductsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#5C4033] mb-1">Photo (URL)</label>
+                  <label className="block text-xs sm:text-sm font-medium text-[#5C4033] mb-1">Photo (URL)</label>
                   <input
                     placeholder="https://exemple.com/photo.jpg"
                     value={editForm.imageUrl}
                     onChange={(e) => setEditForm({ ...editForm, imageUrl: e.target.value })}
-                    className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                    className="w-full p-2 sm:p-2.5 rounded-xl border border-[#D4AF37]/20 text-xs sm:text-sm"
                   />
                   {editForm.imageUrl && (
                     <img 
                       src={editForm.imageUrl} 
                       alt="Aperçu" 
-                      className="mt-2 w-20 h-20 object-cover rounded-lg border" 
+                      className="mt-1 w-11 h-11 sm:w-13 sm:h-13 object-cover rounded-md border" 
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />
                   )}
@@ -855,22 +857,22 @@ export default function ProductsPage() {
                   placeholder="Description"
                   value={editForm.description}
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  className="w-full p-3 rounded-xl border border-[#D4AF37]/20 text-sm sm:text-base"
+                  className="w-full p-2 sm:p-2.5 rounded-xl border border-[#D4AF37]/20 text-xs sm:text-sm"
                   rows={2}
                 />
 
-                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <div className="flex flex-col sm:flex-row gap-1.5 sm:gap-2 pt-1">
                   <button
                     type="button"
                     onClick={closeEdit}
-                    className="flex-1 p-3 border rounded-xl text-sm sm:text-base"
+                    className="flex-1 p-2 sm:p-2.5 border rounded-xl text-xs sm:text-sm"
                   >
                     Annuler
                   </button>
                   <button 
                     type="submit" 
                     disabled={savingEdit}
-                    className="flex-1 p-3 btn-luxe text-sm sm:text-base disabled:opacity-70"
+                    className="flex-1 p-2.5 sm:p-3 btn-luxe text-sm disabled:opacity-70"
                   >
                     {savingEdit ? "Enregistrement..." : "Enregistrer les modifications"}
                   </button>
