@@ -203,24 +203,10 @@ export default function SalesPage() {
   };
 
   const handleSubmit = async () => {
+    console.log('[Sales] handleSubmit déclenché', { submittingSale, cartLength: cart.length });
+    // Removed aggressive early return guard (disabled state on button prevents double submit)
     if (cart.length === 0) return;
 
-    // === MAXIMUM PERCEIVED SPEED ===
-    // 1. Save backup in case of error
-    const backup = {
-      cart: [...cart],
-      customer: selectedCustomer,
-      promotion: selectedPromotion,
-      method: paymentMethod,
-      phone: paymentPhone,
-    };
-
-    // 2. Clear UI + show loading **IMMEDIATELY** (before any network)
-    setCart([]);
-    setSelectedCustomer("");
-    setSelectedPromotion("");
-    setPaymentMethod("cash");
-    setPaymentPhone("");
     setSubmittingSale(true);
 
     try {
@@ -228,11 +214,11 @@ export default function SalesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: backup.cart.map(i => ({ productId: i.productId, quantity: i.quantity })),
-          customerId: backup.customer || null,
-          paymentMethod: backup.method,
-          paymentPhone: backup.phone || null,
-          promotionId: backup.promotion || null,
+          items: cart.map(i => ({ productId: i.productId, quantity: i.quantity })),
+          customerId: selectedCustomer || null,
+          paymentMethod: paymentMethod,
+          paymentPhone: paymentPhone || null,
+          promotionId: selectedPromotion || null,
         }),
       });
 
@@ -240,26 +226,25 @@ export default function SalesPage() {
       let data: any = {};
       if (raw && raw.trim()) {
         try { data = JSON.parse(raw); } catch { data = { error: raw }; }
-      } else {
-        data = { error: `Erreur serveur (${res.status})` };
       }
 
       if (!res.ok) {
-        // Rollback only on real failure
-        setCart(backup.cart);
-        setSelectedCustomer(backup.customer);
-        setSelectedPromotion(backup.promotion);
-        setPaymentMethod(backup.method);
-        setPaymentPhone(backup.phone);
-        throw new Error(data.error || "Erreur lors de la vente");
+        throw new Error(data.error || "Erreur lors de la validation de la vente");
       }
 
-      // Success: refresh data in background
+      // Clear UI only on success (keeps button + loading text visible during fetch)
+      setCart([]);
+      setSelectedCustomer("");
+      setSelectedPromotion("");
+      setPaymentMethod("cash");
+      setPaymentPhone("");
+
       fetchProducts();
       fetchSales();
 
-      // Defer PDF (heavy) so the button feels super fast
-      setTimeout(() => generateInvoice(data), 15);
+      setTimeout(() => {
+        if (data) generateInvoice(data);
+      }, 20);
 
     } catch (err: any) {
       console.error("Erreur validation vente:", err);

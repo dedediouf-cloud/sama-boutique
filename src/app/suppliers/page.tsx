@@ -113,13 +113,11 @@ export default function SuppliersPage() {
 
   const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('[Suppliers] handleOrderSubmit déclenché', { creatingOrder, supplierId: orderForm.supplierId, itemsCount: orderForm.items.length });
 
-    // === INSTANT FEEDBACK ===
-    setCreatingOrder(true);
-
+    // Basic validation (early returns only for user feedback)
     if (!orderForm.supplierId) {
       alert("Veuillez choisir un fournisseur.");
-      setCreatingOrder(false);
       return;
     }
 
@@ -132,34 +130,41 @@ export default function SuppliersPage() {
 
     if (validItems.length === 0) {
       alert("Veuillez ajouter au moins un article avec une quantité et un prix valides.");
-      setCreatingOrder(false);
       return;
     }
 
-    const res = await fetch("/api/supplier-orders", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        supplierId: orderForm.supplierId,
-        notes: orderForm.notes,
-        items: validItems.map((item) => ({
-          productId: item.productId || null,
-          productName: item.productName,
-          quantity: parseInt(item.quantity),
-          unitPrice: parseFloat(item.unitPrice),
-        })),
-      }),
-    });
+    setCreatingOrder(true);
 
-    setCreatingOrder(false);
+    try {
+      const res = await fetch("/api/supplier-orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supplierId: orderForm.supplierId,
+          notes: orderForm.notes,
+          items: validItems.map((item) => ({
+            productId: item.productId || null,
+            productName: item.productName,
+            quantity: parseInt(item.quantity),
+            unitPrice: parseFloat(item.unitPrice),
+          })),
+        }),
+      });
 
-    if (res.ok) {
-      setOrderForm({ supplierId: "", notes: "", items: [] });
-      setShowOrderForm(false);
-      fetchOrders();
-    } else {
-      const error = await res.json().catch(() => ({}));
-      alert(error.error || "Erreur lors de la création");
+      if (res.ok) {
+        setOrderForm({ supplierId: "", notes: "", items: [] });
+        setShowOrderForm(false);
+        fetchOrders();
+        alert("✅ Commande créée avec succès !");
+      } else {
+        const error = await res.json().catch(() => ({}));
+        alert(error.error || "Erreur lors de la création de la commande");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Erreur réseau lors de la création de la commande");
+    } finally {
+      setCreatingOrder(false);
     }
   };
 
@@ -202,8 +207,7 @@ export default function SuppliersPage() {
             </button>
             <button
               onClick={() => setShowOrderForm(!showOrderForm)}
-              disabled={creatingOrder}
-              className="px-5 py-3 rounded-xl btn-luxe flex items-center gap-2 font-medium active:scale-[0.985] transition-all disabled:opacity-70"
+              className="px-5 py-3 rounded-xl btn-luxe flex items-center gap-2 font-medium active:scale-[0.985] transition-all"
             >
               {showOrderForm ? <X size={18} /> : <Plus size={18} />}
               {showOrderForm ? "Annuler" : "Créer une commande"}
