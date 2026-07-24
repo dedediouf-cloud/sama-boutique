@@ -111,31 +111,29 @@ export default function SuppliersPage() {
     setOrderForm({ ...orderForm, items });
   };
 
-  const handleOrderSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log("✅ handleOrderSubmit déclenché", { supplierId: orderForm.supplierId, items: orderForm.items.length });
+  const handleOrderSubmit = async () => {
+    console.log("🚀 [SUPPLIERS] handleOrderSubmit déclenché");
+
+    if (!orderForm.supplierId) {
+      alert("Veuillez choisir un fournisseur.");
+      return;
+    }
+
+    const validItems = orderForm.items.filter(
+      (item) =>
+        item.productName && item.productName.trim() &&
+        parseInt(item.quantity || "0") > 0 &&
+        parseFloat(item.unitPrice || "0") >= 0
+    );
+
+    if (validItems.length === 0) {
+      alert("Veuillez ajouter au moins un article avec une quantité et un prix valides.");
+      return;
+    }
 
     setCreatingOrder(true);
 
     try {
-      // Basic validation
-      if (!orderForm.supplierId) {
-        alert("Veuillez choisir un fournisseur.");
-        return;
-      }
-
-      const validItems = orderForm.items.filter(
-        (item) =>
-          item.productName.trim() &&
-          parseInt(item.quantity) > 0 &&
-          parseFloat(item.unitPrice) >= 0
-      );
-
-      if (validItems.length === 0) {
-        alert("Veuillez ajouter au moins un article avec une quantité et un prix valides.");
-        return;
-      }
-
       const res = await fetch("/api/supplier-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -253,10 +251,10 @@ export default function SuppliersPage() {
               <Truck size={20} className="text-[#B87333]" />
               Nouvelle commande fournisseur
             </h2>
-            <form onSubmit={handleOrderSubmit} className="space-y-5">
+            <div className="space-y-5">
               <div>
                 <label className="block text-sm font-medium text-[#5C4033] mb-1.5">Fournisseur</label>
-                <select value={orderForm.supplierId} onChange={(e) => setOrderForm({ ...orderForm, supplierId: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]" required>
+                <select value={orderForm.supplierId} onChange={(e) => setOrderForm({ ...orderForm, supplierId: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]">
                   <option value="">Choisir un fournisseur</option>
                   {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
@@ -276,13 +274,13 @@ export default function SuppliersPage() {
                       </select>
                     </div>
                     <div>
-                      <input type="text" placeholder="Nom article" value={item.productName} onChange={(e) => updateOrderItem(index, "productName", e.target.value)} className="w-full px-3 py-2 rounded-xl input-warm text-[#3D2B1F] text-sm" required />
+                      <input type="text" placeholder="Nom article" value={item.productName} onChange={(e) => updateOrderItem(index, "productName", e.target.value)} className="w-full px-3 py-2 rounded-xl input-warm text-[#3D2B1F] text-sm" />
                     </div>
                     <div>
-                      <input type="number" min="1" placeholder="Qté" value={item.quantity} onChange={(e) => updateOrderItem(index, "quantity", e.target.value)} className="w-full px-3 py-2 rounded-xl input-warm text-[#3D2B1F] text-sm" required />
+                      <input type="number" min="1" placeholder="Qté" value={item.quantity} onChange={(e) => updateOrderItem(index, "quantity", e.target.value)} className="w-full px-3 py-2 rounded-xl input-warm text-[#3D2B1F] text-sm" />
                     </div>
                     <div className="flex gap-2">
-                      <input type="number" min="0" placeholder="Prix unitaire" value={item.unitPrice} onChange={(e) => updateOrderItem(index, "unitPrice", e.target.value)} className="w-full px-3 py-2 rounded-xl input-warm text-[#3D2B1F] text-sm" required />
+                      <input type="number" min="0" placeholder="Prix unitaire" value={item.unitPrice} onChange={(e) => updateOrderItem(index, "unitPrice", e.target.value)} className="w-full px-3 py-2 rounded-xl input-warm text-[#3D2B1F] text-sm" />
                     </div>
                     <button type="button" onClick={() => removeOrderItem(index)} className="text-red-600 hover:text-red-700 text-sm font-medium flex items-center gap-1">
                       <Trash2 size={14} /> Retirer
@@ -295,14 +293,15 @@ export default function SuppliersPage() {
                   <Plus size={16} /> Ajouter un article
                 </button>
                 <button 
-                  type="submit" 
+                  type="button"
+                  onClick={handleOrderSubmit}
                   disabled={creatingOrder} 
                   className="px-8 py-2.5 rounded-xl btn-luxe font-medium disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.985] transition-all flex items-center justify-center gap-2"
                 >
                   {creatingOrder ? "Création en cours..." : "Créer la commande"}
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         )}
 

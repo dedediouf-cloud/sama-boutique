@@ -202,10 +202,8 @@ export default function SalesPage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log("✅ handleSubmit déclenché - Panier:", cart.length, "items");
-
+  const handleSubmit = async () => {
+    console.log("🚀 [SALES] handleSubmit DÉCLENCHÉ - Panier:", cart.length);
     setSubmittingSale(true);
 
     try {
@@ -236,7 +234,6 @@ export default function SalesPage() {
         throw new Error(data.error || "Erreur lors de la validation de la vente");
       }
 
-      // Clear UI only on success
       setCart([]);
       setSelectedCustomer("");
       setSelectedPromotion("");
@@ -546,7 +543,7 @@ export default function SalesPage() {
                     </div>
                   ))}
 
-                  <form onSubmit={handleSubmit} className="pt-4 border-t border-[#D4AF37]/20 space-y-2">
+                  <div className="pt-4 border-t border-[#D4AF37]/20 space-y-2">
                     <div className="flex justify-between text-[#5C4033]">
                       <span>Sous-total</span>
                       <span>{formatPrice(subtotal)} FCFA</span>
@@ -562,7 +559,8 @@ export default function SalesPage() {
                       <span>{formatPrice(total)} FCFA</span>
                     </div>
                     <button 
-                      type="submit"
+                      type="button"
+                      onClick={handleSubmit}
                       disabled={submittingSale}
                       className="w-full mt-4 py-3.5 rounded-xl btn-luxe font-medium flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.985] transition-all"
                     >
@@ -575,7 +573,7 @@ export default function SalesPage() {
                           : "Valider et demander paiement Wave"
                       )}
                     </button>
-                  </form>
+                  </div>
                 </div>
               )}
             </div>
