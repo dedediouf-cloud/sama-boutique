@@ -111,11 +111,10 @@ export default function SuppliersPage() {
     setOrderForm({ ...orderForm, items });
   };
 
-  const handleOrderSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('[Suppliers] handleOrderSubmit déclenché', { creatingOrder, supplierId: orderForm.supplierId, itemsCount: orderForm.items.length });
+  const handleOrderSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
 
-    // Basic validation (early returns only for user feedback)
+    // Basic validation
     if (!orderForm.supplierId) {
       alert("Veuillez choisir un fournisseur.");
       return;

@@ -202,10 +202,12 @@ export default function SalesPage() {
     }
   };
 
-  const handleSubmit = async () => {
-    console.log('[Sales] handleSubmit déclenché', { submittingSale, cartLength: cart.length });
-    // Removed aggressive early return guard (disabled state on button prevents double submit)
-    if (cart.length === 0) return;
+  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
+
+    if (cart.length === 0) {
+      return;
+    }
 
     setSubmittingSale(true);
 
@@ -542,7 +544,7 @@ export default function SalesPage() {
                     </div>
                   ))}
 
-                  <div className="pt-4 border-t border-[#D4AF37]/20 space-y-2">
+                  <form onSubmit={handleSubmit} className="pt-4 border-t border-[#D4AF37]/20 space-y-2">
                     <div className="flex justify-between text-[#5C4033]">
                       <span>Sous-total</span>
                       <span>{formatPrice(subtotal)} FCFA</span>
@@ -558,7 +560,7 @@ export default function SalesPage() {
                       <span>{formatPrice(total)} FCFA</span>
                     </div>
                     <button 
-                      onClick={handleSubmit} 
+                      type="submit"
                       disabled={submittingSale}
                       className="w-full mt-4 py-3.5 rounded-xl btn-luxe font-medium flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.985] transition-all"
                     >
@@ -571,7 +573,6 @@ export default function SalesPage() {
                           : "Valider et demander paiement Wave"
                       )}
                     </button>
-                  </div>
                 </div>
               )}
             </div>
