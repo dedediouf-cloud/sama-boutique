@@ -41,6 +41,9 @@ export default function ProductsPage() {
     name: "", description: "", price: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [restocking, setRestocking] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const fetchProducts = async () => {
     try {
@@ -151,7 +154,7 @@ export default function ProductsPage() {
       return;
     }
 
-    setLoading(true);
+    setCreating(true);
     try {
       const res = await fetch("/api/products", {
         method: "POST",
@@ -178,13 +181,14 @@ export default function ProductsPage() {
     } catch (error) {
       alert("Erreur réseau lors de l'enregistrement");
     } finally {
-      setLoading(false);
+      setCreating(false);
     }
   };
 
   const deleteProduct = async (id: string, name: string) => {
     if (!confirm(`Supprimer définitivement le produit "${name}" ?`)) return;
 
+    setDeletingId(id);
     try {
       const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
       if (res.ok) {
@@ -195,6 +199,8 @@ export default function ProductsPage() {
       }
     } catch (error) {
       alert("Erreur réseau lors de la suppression");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -246,6 +252,7 @@ export default function ProductsPage() {
       return;
     }
 
+    setRestocking(true);
     try {
       await fetch(`/api/products/${restockForm.productId}/restock`, {
         method: "POST",
@@ -261,6 +268,8 @@ export default function ProductsPage() {
       await fetchProducts();
     } catch (error) {
       alert("Erreur lors du réapprovisionnement");
+    } finally {
+      setRestocking(false);
     }
   };
 
@@ -371,23 +380,41 @@ export default function ProductsPage() {
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
             {isAdmin(session?.user?.role) && (
               <>
-                <label className="flex-1 sm:flex-none px-4 py-2.5 border border-[#D4AF37]/40 text-[#B87333] rounded-xl flex items-center justify-center gap-2 cursor-pointer text-sm">
+                <label className={`flex-1 sm:flex-none px-4 py-2.5 border border-[#D4AF37]/40 text-[#B87333] rounded-xl flex items-center justify-center gap-2 text-sm ${importing || creating || restocking || deletingAll ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}>
                   <Upload size={18} />
                   {importing ? "Import..." : "Importer CSV"}
-                  <input type="file" accept=".csv,.txt" className="hidden" onChange={handleCSVImport} disabled={importing} />
+                  <input 
+                    type="file" 
+                    accept=".csv,.txt" 
+                    className="hidden" 
+                    onChange={handleCSVImport} 
+                    disabled={importing || creating || restocking || deletingAll} 
+                  />
                 </label>
 
-                <button onClick={downloadCSVTemplate} className="flex-1 sm:flex-none px-4 py-2.5 border border-[#D4AF37]/30 rounded-xl flex items-center justify-center gap-2 text-sm">
+                <button 
+                  onClick={downloadCSVTemplate} 
+                  disabled={importing || creating || restocking || deletingAll}
+                  className="flex-1 sm:flex-none px-4 py-2.5 border border-[#D4AF37]/30 rounded-xl flex items-center justify-center gap-2 text-sm disabled:opacity-60 active:scale-[0.985] transition-all"
+                >
                   <Download size={18} /> Modèle CSV
                 </button>
 
-                <button onClick={() => setShowForm(!showForm)} className="flex-1 sm:flex-none px-5 py-2.5 btn-luxe flex items-center justify-center gap-2 text-sm">
+                <button 
+                  onClick={() => setShowForm(!showForm)} 
+                  disabled={creating || restocking || deletingAll}
+                  className="flex-1 sm:flex-none px-5 py-2.5 btn-luxe flex items-center justify-center gap-2 text-sm disabled:opacity-70 active:scale-[0.985] transition-all"
+                >
                   {showForm ? <X size={18} /> : <Plus size={18} />} {showForm ? "Annuler" : "Ajouter"}
                 </button>
 
                 {products.length > 0 && (
-                  <button onClick={deleteAllProducts} disabled={deletingAll} className="flex-1 sm:flex-none px-4 py-2.5 border border-red-300 text-red-600 rounded-xl flex items-center justify-center gap-2 text-sm">
-                    <Trash size={18} /> {deletingAll ? "..." : "Tout supprimer"}
+                  <button 
+                    onClick={deleteAllProducts} 
+                    disabled={deletingAll || deletingId !== null || restocking || creating} 
+                    className="flex-1 sm:flex-none px-4 py-2.5 border border-red-300 text-red-600 rounded-xl flex items-center justify-center gap-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.985] transition-all"
+                  >
+                    <Trash size={18} /> {deletingAll ? "Suppression..." : "Tout supprimer"}
                   </button>
                 )}
               </>
@@ -439,8 +466,12 @@ export default function ProductsPage() {
 
               <div className="flex flex-col sm:flex-row gap-3">
                 <button type="button" onClick={() => setShowForm(false)} className="flex-1 px-6 py-3 border rounded-xl text-sm sm:text-base">Annuler</button>
-                <button type="submit" disabled={loading} className="flex-1 btn-luxe px-8 py-3 disabled:opacity-50 text-sm sm:text-base">
-                  {loading ? "Enregistrement..." : "Enregistrer le produit"}
+                <button 
+                  type="submit" 
+                  disabled={creating} 
+                  className="flex-1 btn-luxe px-8 py-3 disabled:opacity-60 disabled:cursor-not-allowed text-sm sm:text-base flex items-center justify-center gap-2 active:scale-[0.985] transition-all"
+                >
+                  {creating ? "Enregistrement..." : "Enregistrer le produit"}
                 </button>
               </div>
             </form>
@@ -465,7 +496,7 @@ export default function ProductsPage() {
         ) : error ? (
           <div className="glass rounded-2xl p-8 text-center">
             <p className="text-red-600 mb-4">{error}</p>
-            <button onClick={fetchProducts} className="px-6 py-2 border rounded-xl bg-white hover:bg-gray-50">Réessayer</button>
+            <button onClick={fetchProducts} disabled={loading} className="px-6 py-2 border rounded-xl bg-white hover:bg-gray-50 disabled:opacity-60">Réessayer</button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="glass rounded-2xl p-10 sm:p-12 text-center">
@@ -503,14 +534,26 @@ export default function ProductsPage() {
 
                     {isAdmin(session?.user?.role) && (
                       <div className="flex gap-0.5">
-                        <button onClick={() => openRestock(p)} className="flex-1 text-[9px] px-1.5 py-1 border border-[#D4AF37]/25 rounded-md hover:bg-[#D4AF37]/10 flex items-center justify-center gap-0.5">
+                        <button 
+                          onClick={() => openRestock(p)} 
+                          disabled={restocking}
+                          className="flex-1 text-[9px] px-1.5 py-1 border border-[#D4AF37]/25 rounded-md hover:bg-[#D4AF37]/10 flex items-center justify-center gap-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
                           <TrendingUp size={10} /> Réappro
                         </button>
-                        <button onClick={() => openEdit(p)} className="flex-1 text-[9px] px-1.5 py-1 border border-[#D4AF37]/25 rounded-md hover:bg-[#D4AF37]/10 flex items-center justify-center gap-0.5">
+                        <button 
+                          onClick={() => openEdit(p)} 
+                          disabled={savingEdit}
+                          className="flex-1 text-[9px] px-1.5 py-1 border border-[#D4AF37]/25 rounded-md hover:bg-[#D4AF37]/10 flex items-center justify-center gap-0.5 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
                           Modifier
                         </button>
-                        <button onClick={() => deleteProduct(p.id, p.name)} className="px-1 flex items-center justify-center text-red-600 hover:text-red-700">
-                          <Trash2 size={13} />
+                        <button 
+                          onClick={() => deleteProduct(p.id, p.name)} 
+                          disabled={deletingId === p.id}
+                          className="px-1 flex items-center justify-center text-red-600 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {deletingId === p.id ? "..." : <Trash2 size={13} />}
                         </button>
                       </div>
                     )}
@@ -558,8 +601,21 @@ export default function ProductsPage() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                  <button type="button" onClick={() => setRestockForm({ open: false, productId: "", productName: "", quantity: "", note: "", supplierId: "", unitPrice: "" })} className="flex-1 p-3 border border-[#D4AF37]/40 rounded-xl">Annuler</button>
-                  <button type="submit" className="flex-1 p-3 btn-luxe">Valider l'ajout</button>
+                  <button 
+                    type="button" 
+                    onClick={() => setRestockForm({ open: false, productId: "", productName: "", quantity: "", note: "", supplierId: "", unitPrice: "" })} 
+                    disabled={restocking}
+                    className="flex-1 p-3 border border-[#D4AF37]/40 rounded-xl disabled:opacity-60"
+                  >
+                    Annuler
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={restocking} 
+                    className="flex-1 p-3 btn-luxe disabled:opacity-70 flex items-center justify-center gap-2"
+                  >
+                    {restocking ? "Validation..." : "Valider l'ajout"}
+                  </button>
                 </div>
               </form>
             </div>
@@ -605,9 +661,13 @@ export default function ProductsPage() {
 
                 <div className="flex flex-col sm:flex-row gap-2 pt-1">
                   <button type="button" onClick={closeEdit} className="flex-1 p-2.5 border rounded-xl text-sm">Annuler</button>
-                  <button type="submit" disabled={savingEdit} className="flex-1 p-2.5 btn-luxe text-sm disabled:opacity-70">
-                    {savingEdit ? "Enregistrement..." : "Enregistrer les modifications"}
-                  </button>
+                  <button 
+                  type="submit" 
+                  disabled={savingEdit} 
+                  className="flex-1 p-2.5 btn-luxe text-sm disabled:opacity-70 flex items-center justify-center gap-2 active:scale-[0.985] transition-all"
+                >
+                  {savingEdit ? "Enregistrement..." : "Enregistrer les modifications"}
+                </button>
                 </div>
               </form>
             </div>
