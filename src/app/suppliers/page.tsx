@@ -111,30 +111,31 @@ export default function SuppliersPage() {
     setOrderForm({ ...orderForm, items });
   };
 
-  const handleOrderSubmit = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-
-    // Basic validation
-    if (!orderForm.supplierId) {
-      alert("Veuillez choisir un fournisseur.");
-      return;
-    }
-
-    const validItems = orderForm.items.filter(
-      (item) =>
-        item.productName.trim() &&
-        parseInt(item.quantity) > 0 &&
-        parseFloat(item.unitPrice) >= 0
-    );
-
-    if (validItems.length === 0) {
-      alert("Veuillez ajouter au moins un article avec une quantité et un prix valides.");
-      return;
-    }
+  const handleOrderSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log("✅ handleOrderSubmit déclenché", { supplierId: orderForm.supplierId, items: orderForm.items.length });
 
     setCreatingOrder(true);
 
     try {
+      // Basic validation
+      if (!orderForm.supplierId) {
+        alert("Veuillez choisir un fournisseur.");
+        return;
+      }
+
+      const validItems = orderForm.items.filter(
+        (item) =>
+          item.productName.trim() &&
+          parseInt(item.quantity) > 0 &&
+          parseFloat(item.unitPrice) >= 0
+      );
+
+      if (validItems.length === 0) {
+        alert("Veuillez ajouter au moins un article avec une quantité et un prix valides.");
+        return;
+      }
+
       const res = await fetch("/api/supplier-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

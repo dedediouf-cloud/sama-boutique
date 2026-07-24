@@ -202,16 +202,18 @@ export default function SalesPage() {
     }
   };
 
-  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
-    if (e) e.preventDefault();
-
-    if (cart.length === 0) {
-      return;
-    }
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    console.log("✅ handleSubmit déclenché - Panier:", cart.length, "items");
 
     setSubmittingSale(true);
 
     try {
+      if (cart.length === 0) {
+        alert("Le panier est vide. Veuillez ajouter des produits.");
+        return;
+      }
+
       const res = await fetch("/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -234,7 +236,7 @@ export default function SalesPage() {
         throw new Error(data.error || "Erreur lors de la validation de la vente");
       }
 
-      // Clear UI only on success (keeps button + loading text visible during fetch)
+      // Clear UI only on success
       setCart([]);
       setSelectedCustomer("");
       setSelectedPromotion("");
@@ -573,6 +575,7 @@ export default function SalesPage() {
                           : "Valider et demander paiement Wave"
                       )}
                     </button>
+                  </form>
                 </div>
               )}
             </div>
