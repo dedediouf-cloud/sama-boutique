@@ -575,10 +575,10 @@ export default function SalesPage() {
                     <button 
                       onClick={handleSubmit} 
                       disabled={submittingSale}
-                      className="w-full mt-4 py-3.5 rounded-xl btn-luxe font-medium flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                      className="w-full mt-4 py-3.5 rounded-xl btn-luxe font-medium flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.985] transition-all"
                     >
                       <Receipt size={18} />
-                      {submittingSale ? "Traitement en cours..." : (
+                      {submittingSale ? "Validation en cours..." : (
                         paymentMethod === "cash"
                           ? "Valider la vente et facturer"
                           : paymentMethod === "orange_money"

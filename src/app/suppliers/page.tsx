@@ -113,6 +113,8 @@ export default function SuppliersPage() {
 
   const handleOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // === INSTANT FEEDBACK ===
     setCreatingOrder(true);
 
     if (!orderForm.supplierId) {
@@ -200,10 +202,11 @@ export default function SuppliersPage() {
             </button>
             <button
               onClick={() => setShowOrderForm(!showOrderForm)}
-              className="px-5 py-3 rounded-xl btn-luxe flex items-center gap-2 font-medium"
+              disabled={creatingOrder}
+              className="px-5 py-3 rounded-xl btn-luxe flex items-center gap-2 font-medium active:scale-[0.985] transition-all disabled:opacity-70"
             >
               {showOrderForm ? <X size={18} /> : <Plus size={18} />}
-              {showOrderForm ? "Annuler" : "Commande"}
+              {showOrderForm ? "Annuler" : "Créer une commande"}
             </button>
           </div>
         </div>
@@ -287,8 +290,12 @@ export default function SuppliersPage() {
                 <button type="button" onClick={addOrderItem} className="px-5 py-2.5 rounded-xl border border-[#D4AF37]/30 text-[#5C4033] hover:bg-[#D4AF37]/10 transition-all duration-300 flex items-center gap-2">
                   <Plus size={16} /> Ajouter un article
                 </button>
-                <button type="submit" disabled={creatingOrder} className="px-8 py-2.5 rounded-xl btn-luxe font-medium disabled:opacity-60 disabled:cursor-not-allowed">
-                  {creatingOrder ? "Création..." : "Créer la commande"}
+                <button 
+                  type="submit" 
+                  disabled={creatingOrder} 
+                  className="px-8 py-2.5 rounded-xl btn-luxe font-medium disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.985] transition-all flex items-center justify-center gap-2"
+                >
+                  {creatingOrder ? "Création en cours..." : "Créer la commande"}
                 </button>
               </div>
             </form>
