@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { formatPrice } from "@/lib/utils";
@@ -23,6 +23,8 @@ import {
   Search,
   Package,
   History,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 const paymentLabels: Record<string, string> = {
@@ -55,6 +57,11 @@ export default function SalesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"pos" | "history">("pos");
   const [submittingSale, setSubmittingSale] = useState(false);
+  const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
+
+  const toggleSaleDetails = (saleId: string) => {
+    setExpandedSaleId(expandedSaleId === saleId ? null : saleId);
+  };
 
   useEffect(() => {
     fetchProducts();
@@ -631,48 +638,79 @@ export default function SalesPage() {
                 <tbody className="divide-y divide-[#D4AF37]/10">
                   {Array.isArray(sales) && sales.map((s) => {
                     const status = paymentStatusLabels[s.paymentStatus] || { label: s.paymentStatus, color: "text-[#5C4033]" };
-                    return (
-                      <tr key={s.id} className="hover:bg-[#FDF6E3]/30 transition-colors duration-300">
-                        <td className="px-6 py-4 text-[#5C4033]">{new Date(s.createdAt).toLocaleString()}</td>
-                        <td className="px-6 py-4 text-[#3D2B1F] font-medium">{s.customer?.name || "Client de passage"}</td>
-                        <td className="px-6 py-4 text-[#5C4033]">{s.items.length} article(s)</td>
-                        <td className="px-6 py-4">
-                          <span className="font-semibold text-[#B87333]">{formatPrice(s.finalTotal || s.total)} FCFA</span>
-                          {s.discount > 0 && <p className="text-xs text-[#D4AF37]">-{formatPrice(s.discount)} FCFA</p>}
-                        </td>
-                        <td className="px-6 py-4 text-[#5C4033]">{paymentLabels[s.paymentMethod] || s.paymentMethod}</td>
-                        <td className={`px-6 py-4 font-medium ${status.color} flex items-center gap-1`}>
-                          {s.paymentStatus === "pending" ? <Clock size={14} /> : 
-                           s.paymentStatus === "paid" ? <CheckCircle size={14} /> : 
-                           s.paymentStatus === "cancelled" ? <AlertCircle size={14} /> : <AlertCircle size={14} />}
-                          {status.label}
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            {s.paymentMethod !== "cash" && s.paymentStatus === "pending" && (
-                              <button 
-                                onClick={() => verifyPayment(s.id)} 
-                                className="px-3 py-1 rounded-lg bg-[#D4AF37]/10 text-[#B87333] text-xs font-medium hover:bg-[#D4AF37]/20 transition-colors"
-                              >
-                                Vérifier
-                              </button>
-                            )}
+                    const isExpanded = expandedSaleId === s.id;
 
-                            {/* Bouton Annuler Vente - ADMIN SEULEMENT */}
-                            {isAdmin(session?.user?.role) && s.paymentStatus !== "cancelled" && (
-                              <button 
-                                onClick={() => cancelSale(s.id, s.customer?.name || "Client de passage")}
-                                className="px-3 py-1 rounded-lg border border-red-300 text-red-600 text-xs hover:bg-red-50 transition-colors"
-                              >
-                                Annuler
-                              </button>
-                            )}
-                            {s.paymentStatus === "cancelled" && (
-                              <span className="text-xs text-red-600 font-medium px-2">Annulée</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
+                    return (
+                      <React.Fragment key={s.id}>
+                        <tr className="hover:bg-[#FDF6E3]/30 transition-colors duration-300">
+                          <td className="px-6 py-4 text-[#5C4033]">{new Date(s.createdAt).toLocaleString()}</td>
+                          <td className="px-6 py-4 text-[#3D2B1F] font-medium">{s.customer?.name || "Client de passage"}</td>
+                          <td 
+                            className="px-6 py-4 text-[#5C4033] cursor-pointer hover:text-[#B87333] flex items-center gap-1"
+                            onClick={() => toggleSaleDetails(s.id)}
+                          >
+                            {s.items.length} article(s)
+                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="font-semibold text-[#B87333]">{formatPrice(s.finalTotal || s.total)} FCFA</span>
+                            {s.discount > 0 && <p className="text-xs text-[#D4AF37]">-{formatPrice(s.discount)} FCFA</p>}
+                          </td>
+                          <td className="px-6 py-4 text-[#5C4033]">{paymentLabels[s.paymentMethod] || s.paymentMethod}</td>
+                          <td className={`px-6 py-4 font-medium ${status.color} flex items-center gap-1`}>
+                            {s.paymentStatus === "pending" ? <Clock size={14} /> : 
+                             s.paymentStatus === "paid" ? <CheckCircle size={14} /> : 
+                             s.paymentStatus === "cancelled" ? <AlertCircle size={14} /> : <AlertCircle size={14} />}
+                            {status.label}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-2">
+                              {s.paymentMethod !== "cash" && s.paymentStatus === "pending" && (
+                                <button 
+                                  onClick={() => verifyPayment(s.id)} 
+                                  className="px-3 py-1 rounded-lg bg-[#D4AF37]/10 text-[#B87333] text-xs font-medium hover:bg-[#D4AF37]/20 transition-colors"
+                                >
+                                  Vérifier
+                                </button>
+                              )}
+
+                              {/* Bouton Annuler Vente - ADMIN SEULEMENT */}
+                              {isAdmin(session?.user?.role) && s.paymentStatus !== "cancelled" && (
+                                <button 
+                                  onClick={() => cancelSale(s.id, s.customer?.name || "Client de passage")}
+                                  className="px-3 py-1 rounded-lg border border-red-300 text-red-600 text-xs hover:bg-red-50 transition-colors"
+                                >
+                                  Annuler
+                                </button>
+                              )}
+                              {s.paymentStatus === "cancelled" && (
+                                <span className="text-xs text-red-600 font-medium px-2">Annulée</span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Détails des articles - expandable */}
+                        {isExpanded && (
+                          <tr className="bg-[#FDF6E3]/30">
+                            <td colSpan={7} className="px-6 py-4">
+                              <div className="ml-4 border-l-2 border-[#D4AF37]/40 pl-4">
+                                <div className="text-xs font-medium text-[#5C4033] mb-2">Détails des articles :</div>
+                                <div className="grid gap-2">
+                                  {s.items.map((item: any, index: number) => (
+                                    <div key={index} className="flex justify-between text-sm bg-white/70 px-3 py-1.5 rounded-lg border border-[#D4AF37]/10">
+                                      <span className="font-medium text-[#3D2B1F]">{item.product?.name || "Produit"}</span>
+                                      <span className="text-[#5C4033]">
+                                        {item.quantity} × {formatPrice(item.price)} FCFA = <span className="font-semibold text-[#B87333]">{formatPrice(item.price * item.quantity)} FCFA</span>
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>

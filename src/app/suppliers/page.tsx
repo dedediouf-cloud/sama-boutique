@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -20,6 +20,8 @@ import {
   Search,
   ClipboardList,
   Building2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 const orderStatusConfig: Record<string, { label: string; color: string; bg: string; border: string }> = {
@@ -46,6 +48,11 @@ export default function SuppliersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const orderFormRef = useRef<HTMLFormElement>(null);
   const submitOrderBtnRef = useRef<HTMLButtonElement>(null);
+  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
+
+  const toggleOrderDetails = (orderId: string) => {
+    setExpandedOrderId(expandedOrderId === orderId ? null : orderId);
+  };
 
   useEffect(() => {
     if (session?.user?.role && !isAdmin(session.user.role)) {
@@ -368,30 +375,61 @@ export default function SuppliersPage() {
               <tbody className="divide-y divide-[#D4AF37]/10">
                 {filteredOrders.map((o) => {
                   const status = orderStatusConfig[o.status] || orderStatusConfig.pending;
+                  const isExpanded = expandedOrderId === o.id;
+
                   return (
-                    <tr key={o.id} className="hover:bg-[#FDF6E3]/30 transition-colors duration-300">
-                      <td className="px-6 py-4 text-[#5C4033]">{new Date(o.createdAt).toLocaleDateString("fr-FR")}</td>
-                      <td className="px-6 py-4 font-medium text-[#3D2B1F]">{o.supplier.name}</td>
-                      <td className="px-6 py-4 text-[#5C4033]">{o.items.length} article(s)</td>
-                      <td className="px-6 py-4 font-semibold text-[#B87333]">{formatPrice(o.total)} FCFA</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${status.bg} ${status.color} ${status.border} border`}>
-                          {status.label}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        {o.status === "pending" && (
-                          <div className="flex gap-2">
-                            <button onClick={() => updateOrderStatus(o.id, "received")} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-50 text-green-600 text-xs font-medium hover:bg-green-100 transition-colors">
-                              <CheckCircle size={12} /> Reçue
-                            </button>
-                            <button onClick={() => updateOrderStatus(o.id, "cancelled")} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-colors">
-                              <X size={12} /> Annuler
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
+                    <React.Fragment key={o.id}>
+                      <tr className="hover:bg-[#FDF6E3]/30 transition-colors duration-300">
+                        <td className="px-6 py-4 text-[#5C4033]">{new Date(o.createdAt).toLocaleDateString("fr-FR")}</td>
+                        <td className="px-6 py-4 font-medium text-[#3D2B1F]">{o.supplier.name}</td>
+                        <td 
+                          className="px-6 py-4 text-[#5C4033] cursor-pointer hover:text-[#B87333] flex items-center gap-1"
+                          onClick={() => toggleOrderDetails(o.id)}
+                        >
+                          {o.items.length} article(s)
+                          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </td>
+                        <td className="px-6 py-4 font-semibold text-[#B87333]">{formatPrice(o.total)} FCFA</td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${status.bg} ${status.color} ${status.border} border`}>
+                            {status.label}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {o.status === "pending" && (
+                            <div className="flex gap-2">
+                              <button onClick={() => updateOrderStatus(o.id, "received")} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-50 text-green-600 text-xs font-medium hover:bg-green-100 transition-colors">
+                                <CheckCircle size={12} /> Reçue
+                              </button>
+                              <button onClick={() => updateOrderStatus(o.id, "cancelled")} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-colors">
+                                <X size={12} /> Annuler
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Détails des articles de la commande fournisseur */}
+                      {isExpanded && (
+                        <tr className="bg-[#FDF6E3]/30">
+                          <td colSpan={6} className="px-6 py-4">
+                            <div className="ml-4 border-l-2 border-[#D4AF37]/40 pl-4">
+                              <div className="text-xs font-medium text-[#5C4033] mb-2">Détails des articles commandés :</div>
+                              <div className="grid gap-2">
+                                {o.items.map((item: any, index: number) => (
+                                  <div key={index} className="flex justify-between text-sm bg-white/70 px-3 py-1.5 rounded-lg border border-[#D4AF37]/10">
+                                    <span className="font-medium text-[#3D2B1F]">{item.productName}</span>
+                                    <span className="text-[#5C4033]">
+                                      {item.quantity} × {formatPrice(item.unitPrice)} FCFA = <span className="font-semibold text-[#B87333]">{formatPrice(item.quantity * item.unitPrice)} FCFA</span>
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
