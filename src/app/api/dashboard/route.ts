@@ -15,6 +15,7 @@ export async function GET() {
     where: {
       userId: ownerId,
       createdAt: { gte: startOfDay },
+      paymentStatus: { not: "cancelled" },   // exclure les ventes annulées du chiffre d'affaires
     },
     include: { items: true },
   });
@@ -29,7 +30,12 @@ export async function GET() {
 
   const topProducts = await prisma.saleItem.groupBy({
     by: ["productId"],
-    where: { sale: { userId: ownerId } },
+    where: { 
+      sale: { 
+        userId: ownerId,
+        paymentStatus: { not: "cancelled" }   // exclure les ventes annulées
+      } 
+    },
     _sum: { quantity: true },
     orderBy: { _sum: { quantity: "desc" } },
     take: 5,

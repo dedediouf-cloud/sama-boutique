@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -44,6 +44,8 @@ export default function SuppliersPage() {
     items: { productId: string; productName: string; quantity: string; unitPrice: string }[];
   }>({ supplierId: "", notes: "", items: [] });
   const [searchTerm, setSearchTerm] = useState("");
+  const orderFormRef = useRef<HTMLFormElement>(null);
+  const submitOrderBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (session?.user?.role && !isAdmin(session.user.role)) {
@@ -111,14 +113,12 @@ export default function SuppliersPage() {
     setOrderForm({ ...orderForm, items });
   };
 
-  // ✅ FONCTION handleOrderSubmit SIMPLIFIÉE
-  const handleOrderSubmit = async () => {
-    console.log("🟢🟢🟢 [SUPPLIERS] handleOrderSubmit appelé !");
-    
-    if (creatingOrder) {
-      console.log("⏳ Déjà en cours de création...");
-      return;
+  const handleOrderSubmit = useCallback(async (e?: any) => {
+    if (e) {
+      e.preventDefault?.();
+      e.stopPropagation?.();
     }
+    console.log("🚀🚀🚀 [SUPPLIERS] handleOrderSubmit DÉCLENCHÉ - SUPPLIER:", orderForm.supplierId, "ITEMS:", orderForm.items.length);
 
     if (!orderForm.supplierId) {
       alert("Veuillez choisir un fournisseur.");
@@ -170,7 +170,7 @@ export default function SuppliersPage() {
     } finally {
       setCreatingOrder(false);
     }
-  };
+  }, [orderForm]);
 
   const updateOrderStatus = async (id: string, status: string) => {
     await fetch(`/api/supplier-orders/${id}`, {
@@ -257,7 +257,15 @@ export default function SuppliersPage() {
               <Truck size={20} className="text-[#B87333]" />
               Nouvelle commande fournisseur
             </h2>
-            <div className="space-y-5">
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                console.log("🚀🚀🚀 [SUPPLIERS] FORM SUBMIT DÉCLENCHÉ");
+                handleOrderSubmit(e);
+              }}
+              style={{ isolation: 'isolate' }}
+              className="space-y-5"
+            >
               <div>
                 <label className="block text-sm font-medium text-[#5C4033] mb-1.5">Fournisseur</label>
                 <select value={orderForm.supplierId} onChange={(e) => setOrderForm({ ...orderForm, supplierId: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]">
@@ -298,24 +306,35 @@ export default function SuppliersPage() {
                 <button type="button" onClick={addOrderItem} className="px-5 py-2.5 rounded-xl border border-[#D4AF37]/30 text-[#5C4033] hover:bg-[#D4AF37]/10 transition-all duration-300 flex items-center gap-2">
                   <Plus size={16} /> Ajouter un article
                 </button>
-                
-                {/* ✅ BOUTON SIMPLIFIÉ - Supprimé tous les gestionnaires d'événements inutiles */}
                 <button 
-                  type="button"
-                  onClick={handleOrderSubmit}
-                  disabled={creatingOrder}
-                  className="px-8 py-2.5 rounded-xl btn-luxe font-medium disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.985] transition-all flex items-center justify-center gap-2"
+                  ref={submitOrderBtnRef}
+                  type="submit"
+                  disabled={creatingOrder} 
                   style={{ 
                     pointerEvents: 'auto', 
                     position: 'relative', 
                     zIndex: 99999,
-                    cursor: creatingOrder ? 'not-allowed' : 'pointer'
+                    touchAction: 'manipulation',
+                    WebkitTapHighlightColor: 'transparent'
+                  }}
+                  className="px-8 py-2.5 rounded-xl btn-luxe font-medium disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.985] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  onPointerDownCapture={(e) => {
+                    console.log("🔥🔥 [SUPPLIERS] POINTER DOWN CAPTURE");
+                    e.stopPropagation();
+                  }}
+                  onClickCapture={(e) => {
+                    console.log("🔥🔥 [SUPPLIERS] CLICK CAPTURE");
+                    e.stopPropagation();
+                  }}
+                  onTouchStartCapture={(e) => {
+                    console.log("🔥 [SUPPLIERS] TOUCH START CAPTURE");
+                    e.stopPropagation();
                   }}
                 >
                   {creatingOrder ? "Création en cours..." : "Créer la commande"}
                 </button>
               </div>
-            </div>
+            </form>
           </div>
         )}
 

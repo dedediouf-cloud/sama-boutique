@@ -158,6 +158,7 @@ export default function SalesPage() {
     }
   };
 
+  // ✅ Annuler une vente (ADMIN SEULEMENT) - Optimistic UI pour instantanéité
   const cancelSale = async (saleId: string, customerName: string) => {
     if (!isAdmin(session?.user?.role)) {
       alert("Seuls les administrateurs peuvent annuler une vente");
@@ -168,6 +169,7 @@ export default function SalesPage() {
       return;
     }
 
+    // Optimistic update : statut change INSTANTANÉMENT
     setSales(prev => 
       prev.map(s => 
         s.id === saleId ? { ...s, paymentStatus: "cancelled" } : s
@@ -187,24 +189,23 @@ export default function SalesPage() {
 
       if (res.ok) {
         alert("✅ Vente annulée et stocks restaurés");
-        fetchProducts();
+        fetchProducts(); // rafraîchir les stocks
+        // Pas besoin de fetchSales() car mise à jour optimiste
       } else {
         alert(data.error || "Erreur lors de l'annulation");
+        // Rollback en cas d'erreur
         fetchSales();
       }
     } catch (error) {
       alert("Erreur réseau lors de l'annulation");
-      fetchSales();
+      fetchSales(); // rollback
     }
   };
 
-  // ✅ FONCTION handleSubmit SIMPLIFIÉE
-  const handleSubmit = async () => {
-    console.log("🟢🟢🟢 [SALES] CLIC DÉTECTÉ - handleSubmit appelé !");
-    
-    if (submittingSale) {
-      console.log("⏳ Déjà en cours de soumission...");
-      return;
+  const handleSubmit = async (e?: any) => {
+    if (e) {
+      e.preventDefault?.();
+      e.stopPropagation?.();
     }
 
     if (cart.length === 0) {
@@ -215,13 +216,6 @@ export default function SalesPage() {
     setSubmittingSale(true);
 
     try {
-      console.log("📦 Envoi de la vente...", {
-        items: cart.length,
-        customer: selectedCustomer || "Client de passage",
-        paymentMethod,
-        total
-      });
-
       const res = await fetch("/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -234,9 +228,7 @@ export default function SalesPage() {
         }),
       });
 
-      const raw = await res.text();
-      console.log("📥 Réponse brute:", raw);
-      
+      const raw = await res.text().catch(() => "");
       let data: any = {};
       if (raw && raw.trim()) {
         try { data = JSON.parse(raw); } catch { data = { error: raw }; }
@@ -246,28 +238,21 @@ export default function SalesPage() {
         throw new Error(data.error || "Erreur lors de la validation de la vente");
       }
 
-      // Succès - Réinitialiser le panier
       setCart([]);
       setSelectedCustomer("");
       setSelectedPromotion("");
       setPaymentMethod("cash");
       setPaymentPhone("");
 
-      // Rafraîchir les données
-      await Promise.all([
-        fetchProducts(),
-        fetchSales()
-      ]);
+      fetchProducts();
+      fetchSales();
 
-      // Générer la facture
-      if (data) {
-        setTimeout(() => generateInvoice(data), 100);
-      }
-
-      alert("✅ Vente enregistrée avec succès !");
+      setTimeout(() => {
+        if (data) generateInvoice(data);
+      }, 20);
 
     } catch (err: any) {
-      console.error("❌ Erreur validation vente:", err);
+      console.error("Erreur validation vente:", err);
       alert(err.message || "Erreur lors de la validation de la vente");
     } finally {
       setSubmittingSale(false);
@@ -275,86 +260,82 @@ export default function SalesPage() {
   };
 
   const generateInvoice = (sale: any) => {
-    try {
-      const doc = new jsPDF();
-      const shopName = session?.user?.shopName || "Ma Boutique";
-      const shopPhone = session?.user?.phone || "";
-      const shopEmail = session?.user?.email || "";
-      const saleDate = new Date(sale.createdAt);
-      const dateStr = saleDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-      const shortId = sale.id.slice(-4).toUpperCase();
-      const invoiceNumber = `FACT-${saleDate.getFullYear()}${String(saleDate.getMonth() + 1).padStart(2, "0")}${String(saleDate.getDate()).padStart(2, "0")}-${shortId}`;
-      const customerName = sale.customer?.name || "Client de passage";
-      const customerPhone = sale.customer?.phone || "";
+    const doc = new jsPDF();
+    const shopName = session?.user?.shopName || "Ma Boutique";
+    const shopPhone = session?.user?.phone || "";
+    const shopEmail = session?.user?.email || "";
+    const saleDate = new Date(sale.createdAt);
+    const dateStr = saleDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const shortId = sale.id.slice(-4).toUpperCase();
+    const invoiceNumber = `FACT-${saleDate.getFullYear()}${String(saleDate.getMonth() + 1).padStart(2, "0")}${String(saleDate.getDate()).padStart(2, "0")}-${shortId}`;
+    const customerName = sale.customer?.name || "Client de passage";
+    const customerPhone = sale.customer?.phone || "";
 
-      doc.setFillColor(197, 160, 40);
-      doc.rect(0, 0, 210, 45, "F");
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(22);
-      doc.setFont("helvetica", "bold");
-      doc.text(shopName, 20, 25);
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      if (shopPhone) doc.text(`Téléphone : ${shopPhone}`, 20, 33);
-      if (shopEmail) doc.text(`Email : ${shopEmail}`, 20, 39);
-      doc.setFontSize(28);
-      doc.setFont("helvetica", "bold");
-      doc.text("FACTURE", 190, 25, { align: "right" });
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text(`N° ${invoiceNumber}`, 190, 33, { align: "right" });
-      doc.text(`Date : ${dateStr}`, 190, 39, { align: "right" });
+    doc.setFillColor(197, 160, 40);
+    doc.rect(0, 0, 210, 45, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.text(shopName, 20, 25);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    if (shopPhone) doc.text(`Téléphone : ${shopPhone}`, 20, 33);
+    if (shopEmail) doc.text(`Email : ${shopEmail}`, 20, 39);
+    doc.setFontSize(28);
+    doc.setFont("helvetica", "bold");
+    doc.text("FACTURE", 190, 25, { align: "right" });
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`N° ${invoiceNumber}`, 190, 33, { align: "right" });
+    doc.text(`Date : ${dateStr}`, 190, 39, { align: "right" });
 
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.text("Facturé à", 20, 60);
-      doc.setFont("helvetica", "normal");
-      doc.text(customerName, 20, 67);
-      if (customerPhone) doc.text(`Téléphone : ${customerPhone}`, 20, 74);
+    doc.setTextColor(0, 0, 0);
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text("Facturé à", 20, 60);
+    doc.setFont("helvetica", "normal");
+    doc.text(customerName, 20, 67);
+    if (customerPhone) doc.text(`Téléphone : ${customerPhone}`, 20, 74);
 
-      doc.setFont("helvetica", "bold");
-      doc.text("Paiement", 20, 84);
-      doc.setFont("helvetica", "normal");
-      doc.text(paymentLabels[sale.paymentMethod] || "Espèces", 20, 91);
+    doc.setFont("helvetica", "bold");
+    doc.text("Paiement", 20, 84);
+    doc.setFont("helvetica", "normal");
+    doc.text(paymentLabels[sale.paymentMethod] || "Espèces", 20, 91);
 
-      const body = sale.items.map((item: any) => [
-        item.product.name,
-        item.quantity,
-        `${formatPrice(item.price)} FCFA`,
-        `${formatPrice(item.price * item.quantity)} FCFA`,
-      ]);
+    const body = sale.items.map((item: any) => [
+      item.product.name,
+      item.quantity,
+      `${formatPrice(item.price)} FCFA`,
+      `${formatPrice(item.price * item.quantity)} FCFA`,
+    ]);
 
-      const foot: any[] = [["", "", "Sous-total", `${formatPrice(sale.total)} FCFA`]];
-      if (sale.discount > 0) {
-        foot.push(["", "", "Remise", `-${formatPrice(sale.discount)} FCFA`]);
-        if (sale.promotion?.name) {
-          foot.push(["", "", `Promotion (${sale.promotion.name})`, ""]);
-        }
+    const foot: any[] = [["", "", "Sous-total", `${formatPrice(sale.total)} FCFA`]];
+    if (sale.discount > 0) {
+      foot.push(["", "", "Remise", `-${formatPrice(sale.discount)} FCFA`]);
+      if (sale.promotion?.name) {
+        foot.push(["", "", `Promotion (${sale.promotion.name})`, ""]);
       }
-      foot.push(["", "", "TOTAL", `${formatPrice(sale.finalTotal)} FCFA`]);
-
-      autoTable(doc, {
-        startY: 100,
-        head: [["Produit", "Quantité", "Prix unitaire", "Total"]],
-        body,
-        foot,
-        headStyles: { fillColor: [197, 160, 40], textColor: 255, fontStyle: "bold" },
-        footStyles: { fillColor: [253, 246, 227], textColor: [61, 43, 31], fontStyle: "bold" },
-        styles: { fontSize: 10, cellPadding: 5 },
-        columnStyles: { 0: { cellWidth: 80 }, 1: { halign: "center" }, 2: { halign: "right" }, 3: { halign: "right" } },
-      });
-
-      const finalY = (doc as any).lastAutoTable?.finalY || 140;
-      doc.setFontSize(10);
-      doc.setTextColor(92, 64, 51);
-      doc.text("Merci pour votre confiance !", 105, finalY + 15, { align: "center" });
-      doc.text("Les produits vendus ne sont ni repris ni échangés.", 105, finalY + 21, { align: "center" });
-
-      doc.save(`facture-${invoiceNumber}.pdf`);
-    } catch (err) {
-      console.error("Erreur génération facture:", err);
     }
+    foot.push(["", "", "TOTAL", `${formatPrice(sale.finalTotal)} FCFA`]);
+
+    autoTable(doc, {
+      startY: 100,
+      head: [["Produit", "Quantité", "Prix unitaire", "Total"]],
+      body,
+      foot,
+      headStyles: { fillColor: [197, 160, 40], textColor: 255, fontStyle: "bold" },
+      footStyles: { fillColor: [253, 246, 227], textColor: [61, 43, 31], fontStyle: "bold" },
+      styles: { fontSize: 10, cellPadding: 5 },
+      columnStyles: { 0: { cellWidth: 80 }, 1: { halign: "center" }, 2: { halign: "right" }, 3: { halign: "right" } },
+    });
+
+    const finalY = (doc as any).lastAutoTable?.finalY || 140;
+    doc.setFontSize(10);
+    doc.setTextColor(92, 64, 51);
+    doc.text("Merci pour votre confiance !", 105, finalY + 15, { align: "center" });
+    doc.text("Les produits vendus ne sont ni repris ni échangés.", 105, finalY + 21, { align: "center" });
+
+    doc.save(`facture-${invoiceNumber}.pdf`);
   };
 
   const filteredProducts = products.filter((p) =>
@@ -368,8 +349,9 @@ export default function SalesPage() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
+            {/* DEBUG: Si tu vois "Gestion du stock" ici au lieu de ce titre, le problème est dans le build Vercel */}
             <h1 className="font-[family-name:var(--font-playfair)] text-3xl md:text-4xl font-semibold text-[#3D2B1F]">
-              Caisse & Ventes
+              Caisse & Ventes ✅ (PAGE VENTES)
             </h1>
             <p className="text-[#5C4033] mt-1 flex items-center gap-2">
               <ShoppingCart size={16} className="text-[#B87333]" />
@@ -540,7 +522,15 @@ export default function SalesPage() {
                   <p className="text-sm text-[#5C4033]/50 mt-1">Cliquez sur les produits à gauche pour les ajouter</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <form 
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSubmit(e);
+                  }}
+                  style={{ isolation: 'isolate' }}
+                  className="space-y-3"
+                >
                   {cart.map((item) => (
                     <div key={item.productId} className="flex items-center justify-between p-4 rounded-xl bg-[#FDF6E3]/50 border border-[#D4AF37]/10">
                       <div className="min-w-0 flex-1">
@@ -549,6 +539,7 @@ export default function SalesPage() {
                       </div>
                       <div className="flex items-center gap-2 ml-3">
                         <button
+                          type="button"
                           onClick={() => updateQuantity(item.productId, item.quantity - 1)}
                           className="w-8 h-8 rounded-full bg-[#FFFBF5] hover:bg-[#D4AF37]/20 text-[#B87333] flex items-center justify-center transition-colors"
                         >
@@ -556,6 +547,7 @@ export default function SalesPage() {
                         </button>
                         <span className="font-medium text-[#3D2B1F] w-6 text-center">{item.quantity}</span>
                         <button
+                          type="button"
                           onClick={() => updateQuantity(item.productId, item.quantity + 1)}
                           className="w-8 h-8 rounded-full bg-[#FFFBF5] hover:bg-[#D4AF37]/20 text-[#B87333] flex items-center justify-center transition-colors"
                         >
@@ -580,17 +572,25 @@ export default function SalesPage() {
                       <span>Total</span>
                       <span>{formatPrice(total)} FCFA</span>
                     </div>
-
-                    {/* ✅ BOUTON SIMPLIFIÉ - Supprimé tous les gestionnaires d'événements inutiles */}
                     <button 
-                      onClick={handleSubmit}
+                      type="submit"
                       disabled={submittingSale}
-                      className="w-full mt-4 py-3.5 rounded-xl btn-luxe font-medium flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.985] transition-all"
                       style={{ 
                         pointerEvents: 'auto', 
                         position: 'relative', 
                         zIndex: 99999,
-                        cursor: submittingSale ? 'not-allowed' : 'pointer'
+                        touchAction: 'manipulation',
+                        WebkitTapHighlightColor: 'transparent'
+                      }}
+                      className="w-full mt-4 py-3.5 rounded-xl btn-luxe font-medium flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.985] transition-all"
+                      onPointerDownCapture={(e) => {
+                        e.stopPropagation();
+                      }}
+                      onClickCapture={(e) => {
+                        e.stopPropagation();
+                      }}
+                      onTouchStartCapture={(e) => {
+                        e.stopPropagation();
                       }}
                     >
                       <Receipt size={18} />
@@ -603,7 +603,7 @@ export default function SalesPage() {
                       )}
                     </button>
                   </div>
-                </div>
+                </form>
               )}
             </div>
           </div>
@@ -657,6 +657,8 @@ export default function SalesPage() {
                                 Vérifier
                               </button>
                             )}
+
+                            {/* Bouton Annuler Vente - ADMIN SEULEMENT */}
                             {isAdmin(session?.user?.role) && s.paymentStatus !== "cancelled" && (
                               <button 
                                 onClick={() => cancelSale(s.id, s.customer?.name || "Client de passage")}

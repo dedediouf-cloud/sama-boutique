@@ -26,6 +26,7 @@ export async function GET(request: Request) {
     where: {
       userId: ownerId,
       createdAt: { gte: startDate },
+      paymentStatus: { not: "cancelled" },   // ← IMPORTANT : on exclut les ventes annulées du CA
     },
     include: { items: { include: { product: true } } },
     orderBy: { createdAt: "asc" },
