@@ -80,7 +80,7 @@ export default function SalesPage() {
       const data = await res.json();
       if (res.ok && Array.isArray(data)) setCustomers(data);
     } catch (err) {
-      console.error("Erreur clients:", err);
+      // console.error("Erreur clients:", err);
     }
   };
 
@@ -90,7 +90,7 @@ export default function SalesPage() {
       const data = await res.json();
       if (res.ok && Array.isArray(data)) setSales(data);
     } catch (err) {
-      console.error("Erreur ventes:", err);
+      // console.error("Erreur ventes:", err);
     }
   };
 
@@ -100,7 +100,7 @@ export default function SalesPage() {
       const data = await res.json();
       if (res.ok && Array.isArray(data)) setPromotions(data.filter((p: any) => p.active));
     } catch (err) {
-      console.error("Erreur promotions:", err);
+      // console.error("Erreur promotions:", err);
     }
   };
 
@@ -252,7 +252,7 @@ export default function SalesPage() {
       }, 20);
 
     } catch (err: any) {
-      console.error("Erreur validation vente:", err);
+      // console.error("Erreur validation vente:", err);
       alert(err.message || "Erreur lors de la validation de la vente");
     } finally {
       setSubmittingSale(false);

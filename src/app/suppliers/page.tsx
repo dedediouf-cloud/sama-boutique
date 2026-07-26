@@ -118,7 +118,7 @@ export default function SuppliersPage() {
       e.preventDefault?.();
       e.stopPropagation?.();
     }
-    console.log("🚀🚀🚀 [SUPPLIERS] handleOrderSubmit DÉCLENCHÉ - SUPPLIER:", orderForm.supplierId, "ITEMS:", orderForm.items.length);
+
 
     if (!orderForm.supplierId) {
       alert("Veuillez choisir un fournisseur.");
@@ -165,7 +165,7 @@ export default function SuppliersPage() {
         alert(error.error || "Erreur lors de la création de la commande");
       }
     } catch (err) {
-      console.error(err);
+      // console.error(err); // debug only
       alert("Erreur réseau lors de la création de la commande");
     } finally {
       setCreatingOrder(false);
@@ -260,7 +260,7 @@ export default function SuppliersPage() {
             <form 
               onSubmit={(e) => {
                 e.preventDefault();
-                console.log("🚀🚀🚀 [SUPPLIERS] FORM SUBMIT DÉCLENCHÉ");
+
                 handleOrderSubmit(e);
               }}
               style={{ isolation: 'isolate' }}
@@ -319,15 +319,12 @@ export default function SuppliersPage() {
                   }}
                   className="px-8 py-2.5 rounded-xl btn-luxe font-medium disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.985] transition-all flex items-center justify-center gap-2 cursor-pointer"
                   onPointerDownCapture={(e) => {
-                    console.log("🔥🔥 [SUPPLIERS] POINTER DOWN CAPTURE");
                     e.stopPropagation();
                   }}
                   onClickCapture={(e) => {
-                    console.log("🔥🔥 [SUPPLIERS] CLICK CAPTURE");
                     e.stopPropagation();
                   }}
                   onTouchStartCapture={(e) => {
-                    console.log("🔥 [SUPPLIERS] TOUCH START CAPTURE");
                     e.stopPropagation();
                   }}
                 >
