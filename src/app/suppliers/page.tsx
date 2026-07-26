@@ -111,17 +111,14 @@ export default function SuppliersPage() {
     setOrderForm({ ...orderForm, items });
   };
 
-  const handleOrderSubmit = async (e?: any) => {
-    // === ULTRA ROBUST - CAPTURE EVERY CLICK ===
-    if (e) {
-      e.stopPropagation?.();
-      e.preventDefault?.();
+  // ✅ FONCTION handleOrderSubmit SIMPLIFIÉE
+  const handleOrderSubmit = async () => {
+    console.log("🟢🟢🟢 [SUPPLIERS] handleOrderSubmit appelé !");
+    
+    if (creatingOrder) {
+      console.log("⏳ Déjà en cours de création...");
+      return;
     }
-    console.log("🚀🚀🚀 [SUPPLIERS] handleOrderSubmit DÉCLENCHÉ", { 
-      supplierId: orderForm.supplierId, 
-      items: orderForm.items.length,
-      timestamp: Date.now() 
-    });
 
     if (!orderForm.supplierId) {
       alert("Veuillez choisir un fournisseur.");
@@ -301,25 +298,19 @@ export default function SuppliersPage() {
                 <button type="button" onClick={addOrderItem} className="px-5 py-2.5 rounded-xl border border-[#D4AF37]/30 text-[#5C4033] hover:bg-[#D4AF37]/10 transition-all duration-300 flex items-center gap-2">
                   <Plus size={16} /> Ajouter un article
                 </button>
+                
+                {/* ✅ BOUTON SIMPLIFIÉ - Supprimé tous les gestionnaires d'événements inutiles */}
                 <button 
                   type="button"
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    console.log("🟢🟢🟢 [SUPPLIERS] POINTER DOWN");
+                  onClick={handleOrderSubmit}
+                  disabled={creatingOrder}
+                  className="px-8 py-2.5 rounded-xl btn-luxe font-medium disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.985] transition-all flex items-center justify-center gap-2"
+                  style={{ 
+                    pointerEvents: 'auto', 
+                    position: 'relative', 
+                    zIndex: 99999,
+                    cursor: creatingOrder ? 'not-allowed' : 'pointer'
                   }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    console.log("🟢🟢🟢 [SUPPLIERS] CLICK FINAL");
-                    handleOrderSubmit();
-                  }}
-                  onTouchStart={(e) => {
-                    e.stopPropagation();
-                    console.log("🟢 [SUPPLIERS] TOUCH START");
-                  }}
-                  disabled={creatingOrder} 
-                  style={{ pointerEvents: 'auto', position: 'relative', zIndex: 99999 }}
-                  className="px-8 py-2.5 rounded-xl btn-luxe font-medium disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.985] transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {creatingOrder ? "Création en cours..." : "Créer la commande"}
                 </button>
