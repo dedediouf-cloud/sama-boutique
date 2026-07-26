@@ -414,7 +414,25 @@ export default function SuppliersPage() {
                         <tr className="bg-[#FDF6E3]/30">
                           <td colSpan={6} className="px-6 py-4">
                             <div className="ml-4 border-l-2 border-[#D4AF37]/40 pl-4">
-                              <div className="text-xs font-medium text-[#5C4033] mb-2">Détails des articles commandés :</div>
+                              {/* En-tête avec date et référence */}
+                              <div className="flex flex-wrap items-center gap-x-6 gap-y-1 mb-3 text-sm">
+                                <div>
+                                  <span className="text-[#5C4033]/70">Date :</span>{" "}
+                                  <span className="font-medium text-[#3D2B1F]">
+                                    {new Date(o.createdAt).toLocaleDateString("fr-FR", { 
+                                      weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" 
+                                    })}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-[#5C4033]/70">Référence :</span>{" "}
+                                  <span className="font-mono font-semibold text-[#B87333]">
+                                    COMMANDE-{o.id.slice(-8).toUpperCase()}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="text-xs font-medium text-[#5C4033] mb-2">Articles commandés :</div>
                               <div className="grid gap-2">
                                 {o.items.map((item: any, index: number) => (
                                   <div key={index} className="flex justify-between text-sm bg-white/70 px-3 py-1.5 rounded-lg border border-[#D4AF37]/10">
