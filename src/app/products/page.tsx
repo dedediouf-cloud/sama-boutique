@@ -505,7 +505,7 @@ export default function ProductsPage() {
             <p className="text-sm text-[#5C4033]/60 mt-1">{searchTerm ? "Essayez une autre recherche" : "Ajoutez ou importez des produits"}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-1.5 sm:gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-1.5 sm:gap-2.5">
             {filtered.map((p) => {
               const isLowStock = (p.quantity || 0) <= (p.lowStock || 5);
               return (

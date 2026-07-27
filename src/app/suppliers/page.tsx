@@ -360,16 +360,16 @@ export default function SuppliersPage() {
               />
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
+            <table className="w-full text-[11px] sm:text-sm min-w-[560px]">
               <thead className="bg-[#FDF6E3]/50 text-left">
                 <tr>
-                  <th className="px-6 py-4 font-semibold text-[#5C4033]">Date</th>
-                  <th className="px-6 py-4 font-semibold text-[#5C4033]">Fournisseur</th>
-                  <th className="px-6 py-4 font-semibold text-[#5C4033]">Articles</th>
-                  <th className="px-6 py-4 font-semibold text-[#5C4033]">Total</th>
-                  <th className="px-6 py-4 font-semibold text-[#5C4033]">Statut</th>
-                  <th className="px-6 py-4 font-semibold text-[#5C4033]">Actions</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Date</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Fournisseur</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Articles</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Total</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Statut</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#D4AF37]/10">
@@ -380,29 +380,29 @@ export default function SuppliersPage() {
                   return (
                     <React.Fragment key={o.id}>
                       <tr className="hover:bg-[#FDF6E3]/30 transition-colors duration-300">
-                        <td className="px-6 py-4 text-[#5C4033]">{new Date(o.createdAt).toLocaleDateString("fr-FR")}</td>
-                        <td className="px-6 py-4 font-medium text-[#3D2B1F]">{o.supplier.name}</td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 text-[#5C4033] text-xs sm:text-sm">{new Date(o.createdAt).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit"})}</td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 font-medium text-[#3D2B1F] text-xs sm:text-sm truncate max-w-[95px]">{o.supplier.name}</td>
                         <td 
-                          className="px-6 py-4 text-[#5C4033] cursor-pointer hover:text-[#B87333] flex items-center gap-1"
+                          className="px-3 sm:px-6 py-3 sm:py-4 text-[#5C4033] cursor-pointer hover:text-[#B87333] flex items-center gap-1 text-xs sm:text-sm"
                           onClick={() => toggleOrderDetails(o.id)}
                         >
-                          {o.items.length} article(s)
-                          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          {o.items.length} art.
+                          {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                         </td>
-                        <td className="px-6 py-4 font-semibold text-[#B87333]">{formatPrice(o.total)} FCFA</td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-medium ${status.bg} ${status.color} ${status.border} border`}>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#B87333] text-xs sm:text-sm">{formatPrice(o.total)} FCFA</td>
+                        <td className="px-3 sm:px-6 py-3 sm:py-4">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${status.bg} ${status.color} ${status.border} border`}>
                             {status.label}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-3 sm:px-6 py-3 sm:py-4">
                           {o.status === "pending" && (
-                            <div className="flex gap-2">
-                              <button onClick={() => updateOrderStatus(o.id, "received")} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-green-50 text-green-600 text-xs font-medium hover:bg-green-100 transition-colors">
-                                <CheckCircle size={12} /> Reçue
+                            <div className="flex gap-1.5">
+                              <button onClick={() => updateOrderStatus(o.id, "received")} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-green-50 text-green-600 text-[10px] font-medium hover:bg-green-100 transition-colors active:scale-[0.95] touch-manipulation min-h-[28px]">
+                                <CheckCircle size={11} /> Reçue
                               </button>
-                              <button onClick={() => updateOrderStatus(o.id, "cancelled")} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-medium hover:bg-red-100 transition-colors">
-                                <X size={12} /> Annuler
+                              <button onClick={() => updateOrderStatus(o.id, "cancelled")} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-red-50 text-red-600 text-[10px] font-medium hover:bg-red-100 transition-colors active:scale-[0.95] touch-manipulation min-h-[28px]">
+                                <X size={11} /> Annuler
                               </button>
                             </div>
                           )}
@@ -469,14 +469,14 @@ export default function SuppliersPage() {
               Fournisseurs
             </h2>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
+            <table className="w-full text-xs sm:text-sm min-w-[520px]">
               <thead className="bg-[#FDF6E3]/50 text-left">
                 <tr>
-                  <th className="px-6 py-4 font-semibold text-[#5C4033]">Nom</th>
-                  <th className="px-6 py-4 font-semibold text-[#5C4033]">Téléphone</th>
-                  <th className="px-6 py-4 font-semibold text-[#5C4033]">Email</th>
-                  <th className="px-6 py-4 font-semibold text-[#5C4033]">Adresse</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Nom</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Téléphone</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Email</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Adresse</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#D4AF37]/10">

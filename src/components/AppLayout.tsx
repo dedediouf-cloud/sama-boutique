@@ -40,16 +40,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto relative overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
-        {/* Mobile Header with Hamburger */}
-        <div className="lg:hidden mb-4 flex items-center justify-between">
+      <main className="flex-1 p-2.5 sm:p-3 md:p-5 lg:p-8 overflow-auto relative overscroll-contain pb-20 lg:pb-8" style={{ WebkitOverflowScrolling: 'touch' }}>
+        {/* Mobile Header with Hamburger - optimized for phones */}
+        <div className="lg:hidden mb-2 flex items-center justify-between sticky top-0 z-40 bg-[#FFFBF5]/95 backdrop-blur-md py-2 -mx-2 px-3 border-b border-[#D4AF37]/10">
           <button 
             onClick={() => setSidebarOpen(true)}
-            className="p-2 rounded-xl bg-white/70 border border-[#D4AF37]/30 text-[#3D2B1F]"
+            className="p-3 rounded-xl bg-white/90 border border-[#D4AF37]/30 text-[#3D2B1F] active:scale-[0.96] transition-transform touch-manipulation min-h-[44px] min-w-[44px] flex items-center justify-center"
+            aria-label="Ouvrir le menu"
           >
             <Menu size={22} />
           </button>
-          <div className="text-sm font-medium text-[#5C4033]">SamaBoutique</div>
+          <div className="text-sm font-semibold text-[#5C4033] truncate px-2">SamaBoutique</div>
+          <div className="w-10" /> {/* balance */}
         </div>
 
         {/* Subtle warm radial glow */}

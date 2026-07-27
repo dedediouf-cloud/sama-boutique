@@ -141,7 +141,7 @@ export default function ReportsPage() {
         ) : (
           <>
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 perspective-1000">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-5 perspective-1000">
               <StatCard
                 title="Chiffre d'affaires"
                 value={`${formatPrice(data?.totalRevenue || 0)} FCFA`}
@@ -313,14 +313,15 @@ export default function ReportsPage() {
 
 function StatCard({ title, value, icon: Icon, gradient }: { title: string; value: string | number; icon: any; gradient: string }) {
   return (
-    <div className={`glass rounded-2xl p-6 tilt-card bg-gradient-to-br ${gradient}`}>
+    <div className={`glass rounded-2xl p-3.5 sm:p-6 tilt-card bg-gradient-to-br ${gradient} min-h-[88px]`}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-[#5C4033]/80 mb-1">{title}</p>
-          <p className="text-2xl md:text-3xl font-bold text-[#3D2B1F] font-[family-name:var(--font-playfair)]">{value}</p>
+          <p className="text-[10px] sm:text-sm font-medium text-[#5C4033]/80 mb-0.5 sm:mb-1">{title}</p>
+          <p className="text-xl sm:text-2xl md:text-3xl font-bold text-[#3D2B1F] font-[family-name:var(--font-playfair)]">{value}</p>
         </div>
-        <div className="w-12 h-12 rounded-xl bg-[#FFFBF5]/80 flex items-center justify-center shadow-sm text-[#B87333]">
-          <Icon size={24} />
+        <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-[#FFFBF5]/80 flex items-center justify-center shadow-sm text-[#B87333] flex-shrink-0">
+          <Icon size={18} className="sm:hidden" />
+          <Icon size={24} className="hidden sm:block" />
         </div>
       </div>
     </div>

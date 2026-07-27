@@ -388,7 +388,7 @@ export default function SalesPage() {
         {error && <div className="bg-red-50/80 border border-red-200 text-red-700 px-5 py-4 rounded-2xl">{error}</div>}
 
         {activeTab === "pos" ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6">
             {/* Products selection */}
             <div className="glass rounded-2xl p-6 tilt-card">
               <div className="flex items-center justify-between mb-5">
@@ -410,26 +410,26 @@ export default function SalesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[600px] overflow-y-auto pr-1">
+              <div className="grid grid-cols-2 gap-1.5 sm:gap-2 max-h-[420px] sm:max-h-[600px] overflow-y-auto pr-1 touch-pan-y">
                 {Array.isArray(filteredProducts) && filteredProducts.length > 0 ? (
                   filteredProducts.map((p, index) => (
                     <button
                       key={p.id}
                       onClick={() => addToCart(p.id)}
                       disabled={p.quantity <= 0}
-                      className="p-4 rounded-xl border border-[#D4AF37]/20 bg-[#FDF6E3]/30 text-left hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 group"
+                      className="p-2.5 sm:p-3.5 rounded-xl border border-[#D4AF37]/20 bg-[#FDF6E3]/30 text-left hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 group active:scale-[0.985] touch-manipulation min-h-[92px]"
                     >
-                      <div className="flex items-start gap-3">
-                        <span className="text-2xl">{productIcons[index % productIcons.length]}</span>
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg sm:text-xl mt-0.5">{productIcons[index % productIcons.length]}</span>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-[#3D2B1F] truncate">{p.name}</p>
-                          <p className="text-sm text-[#B87333] font-semibold">{formatPrice(p.price)} FCFA</p>
-                          <p className="text-xs text-[#5C4033]/60 mt-1">Stock: {p.quantity}</p>
+                          <p className="font-medium text-[#3D2B1F] truncate text-[13px] sm:text-sm leading-tight">{p.name}</p>
+                          <p className="text-xs sm:text-sm text-[#B87333] font-semibold mt-0.5">{formatPrice(p.price)} FCFA</p>
+                          <p className="text-[10px] text-[#5C4033]/60">Stock: {p.quantity}</p>
                         </div>
                       </div>
                       {cart.find((item) => item.productId === p.id) && (
-                        <p className="text-xs text-[#D4AF37] font-medium mt-2 flex items-center gap-1">
-                          <CheckCircle size={12} /> Dans le panier
+                        <p className="text-[10px] text-[#D4AF37] font-medium mt-1 flex items-center gap-1">
+                          <CheckCircle size={11} /> Dans le panier
                         </p>
                       )}
                     </button>
@@ -544,21 +544,21 @@ export default function SalesPage() {
                         <p className="font-medium text-[#3D2B1F] truncate">{item.name}</p>
                         <p className="text-sm text-[#B87333]">{formatPrice(item.price)} FCFA</p>
                       </div>
-                      <div className="flex items-center gap-2 ml-3">
+                      <div className="flex items-center gap-1.5 ml-2 sm:ml-3">
                         <button
                           type="button"
                           onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                          className="w-8 h-8 rounded-full bg-[#FFFBF5] hover:bg-[#D4AF37]/20 text-[#B87333] flex items-center justify-center transition-colors"
+                          className="w-9 h-9 sm:w-8 sm:h-8 rounded-full bg-[#FFFBF5] hover:bg-[#D4AF37]/20 text-[#B87333] flex items-center justify-center transition-colors active:scale-[0.95] touch-manipulation min-h-[36px] min-w-[36px]"
                         >
-                          <Minus size={16} />
+                          <Minus size={15} />
                         </button>
-                        <span className="font-medium text-[#3D2B1F] w-6 text-center">{item.quantity}</span>
+                        <span className="font-medium text-[#3D2B1F] w-6 text-center text-sm sm:text-base">{item.quantity}</span>
                         <button
                           type="button"
                           onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                          className="w-8 h-8 rounded-full bg-[#FFFBF5] hover:bg-[#D4AF37]/20 text-[#B87333] flex items-center justify-center transition-colors"
+                          className="w-9 h-9 sm:w-8 sm:h-8 rounded-full bg-[#FFFBF5] hover:bg-[#D4AF37]/20 text-[#B87333] flex items-center justify-center transition-colors active:scale-[0.95] touch-manipulation min-h-[36px] min-w-[36px]"
                         >
-                          <Plus size={16} />
+                          <Plus size={15} />
                         </button>
                       </div>
                     </div>
@@ -622,8 +622,8 @@ export default function SalesPage() {
                 Historique des ventes
               </h2>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
+              <table className="w-full text-[11px] sm:text-sm min-w-[580px]">
                 <thead className="bg-[#FDF6E3]/50 text-left">
                   <tr>
                     <th className="px-6 py-4 font-semibold text-[#5C4033]">Date</th>
@@ -643,34 +643,35 @@ export default function SalesPage() {
                     return (
                       <React.Fragment key={s.id}>
                         <tr className="hover:bg-[#FDF6E3]/30 transition-colors duration-300">
-                          <td className="px-6 py-4 text-[#5C4033]">{new Date(s.createdAt).toLocaleString()}</td>
-                          <td className="px-6 py-4 text-[#3D2B1F] font-medium">{s.customer?.name || "Client de passage"}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-[#5C4033] text-[11px] sm:text-xs">{new Date(s.createdAt).toLocaleDateString("fr-FR", {day:"2-digit",month:"2-digit"}) } <span className="text-[10px] text-[#5C4033]/50">{new Date(s.createdAt).toLocaleTimeString("fr-FR", {hour:"2-digit",minute:"2-digit"})}</span></td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-[#3D2B1F] font-medium text-xs sm:text-sm truncate max-w-[110px]">{s.customer?.name || "Client de passage"}</td>
                           <td 
-                            className="px-6 py-4 text-[#5C4033] cursor-pointer hover:text-[#B87333] flex items-center gap-1"
+                            className="px-3 sm:px-6 py-3 sm:py-4 text-[#5C4033] cursor-pointer hover:text-[#B87333] flex items-center gap-1 text-xs sm:text-sm"
                             onClick={() => toggleSaleDetails(s.id)}
                           >
-                            {s.items.length} article(s)
-                            {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                            {s.items.length} art.
+                            {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm">
                             <span className="font-semibold text-[#B87333]">{formatPrice(s.finalTotal || s.total)} FCFA</span>
-                            {s.discount > 0 && <p className="text-xs text-[#D4AF37]">-{formatPrice(s.discount)} FCFA</p>}
+                            {s.discount > 0 && <p className="text-[10px] text-[#D4AF37]">-{formatPrice(s.discount)}</p>}
                           </td>
-                          <td className="px-6 py-4 text-[#5C4033]">{paymentLabels[s.paymentMethod] || s.paymentMethod}</td>
-                          <td className={`px-6 py-4 font-medium ${status.color} flex items-center gap-1`}>
-                            {s.paymentStatus === "pending" ? <Clock size={14} /> : 
-                             s.paymentStatus === "paid" ? <CheckCircle size={14} /> : 
-                             s.paymentStatus === "cancelled" ? <AlertCircle size={14} /> : <AlertCircle size={14} />}
-                            {status.label}
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-[#5C4033] text-[10px] sm:text-xs hidden sm:table-cell">{paymentLabels[s.paymentMethod] || s.paymentMethod}</td>
+                          <td className={`px-3 sm:px-6 py-3 sm:py-4 font-medium ${status.color} flex items-center gap-1 text-xs`}>
+                            {s.paymentStatus === "pending" ? <Clock size={12} /> : 
+                             s.paymentStatus === "paid" ? <CheckCircle size={12} /> : 
+                             s.paymentStatus === "cancelled" ? <AlertCircle size={12} /> : <AlertCircle size={12} />}
+                            <span className="hidden sm:inline">{status.label}</span>
+                            <span className="sm:hidden">{status.label.substring(0,5)}</span>
                           </td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-2">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">
+                            <div className="flex items-center gap-1.5">
                               {s.paymentMethod !== "cash" && s.paymentStatus === "pending" && (
                                 <button 
                                   onClick={() => verifyPayment(s.id)} 
-                                  className="px-3 py-1 rounded-lg bg-[#D4AF37]/10 text-[#B87333] text-xs font-medium hover:bg-[#D4AF37]/20 transition-colors"
+                                  className="px-2 py-1 rounded-md bg-[#D4AF37]/10 text-[#B87333] text-[10px] font-medium hover:bg-[#D4AF37]/20 transition-colors active:scale-[0.95] touch-manipulation min-h-[28px]"
                                 >
-                                  Vérifier
+                                  Vérif.
                                 </button>
                               )}
 
@@ -678,13 +679,13 @@ export default function SalesPage() {
                               {isAdmin(session?.user?.role) && s.paymentStatus !== "cancelled" && (
                                 <button 
                                   onClick={() => cancelSale(s.id, s.customer?.name || "Client de passage")}
-                                  className="px-3 py-1 rounded-lg border border-red-300 text-red-600 text-xs hover:bg-red-50 transition-colors"
+                                  className="px-2 py-1 rounded-md border border-red-300 text-red-600 text-[10px] hover:bg-red-50 transition-colors active:scale-[0.95] touch-manipulation min-h-[28px]"
                                 >
-                                  Annuler
+                                  Annul.
                                 </button>
                               )}
                               {s.paymentStatus === "cancelled" && (
-                                <span className="text-xs text-red-600 font-medium px-2">Annulée</span>
+                                <span className="text-[10px] text-red-600 font-medium px-1">Annulée</span>
                               )}
                             </div>
                           </td>

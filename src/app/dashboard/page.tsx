@@ -84,7 +84,7 @@ export default function DashboardPage() {
         )}
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 perspective-1000">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 perspective-1000">
           <StatCard
             title="Ventes du jour"
             value={data?.countToday || 0}
@@ -192,15 +192,16 @@ function StatCard({
   iconColor: string;
 }) {
   return (
-    <div className={`glass rounded-2xl p-6 tilt-card cursor-default bg-gradient-to-br ${gradient}`}>
+    <div className={`glass rounded-2xl p-3.5 sm:p-6 tilt-card cursor-default bg-gradient-to-br ${gradient} min-h-[92px] sm:min-h-[120px]`}>
       <div className="flex items-start justify-between">
         <div className="preserve-3d">
-          <p className="text-sm font-medium text-[#5C4033]/80 mb-1">{title}</p>
-          <p className="text-3xl font-bold text-[#3D2B1F] font-[family-name:var(--font-playfair)]">{value}</p>
-          <p className="text-sm text-[#B87333] mt-1 font-medium">{subtitle}</p>
+          <p className="text-[10px] sm:text-sm font-medium text-[#5C4033]/80 mb-0.5 sm:mb-1">{title}</p>
+          <p className="text-2xl sm:text-3xl font-bold text-[#3D2B1F] font-[family-name:var(--font-playfair)]">{value}</p>
+          <p className="text-[10px] sm:text-sm text-[#B87333] mt-0.5 sm:mt-1 font-medium leading-tight">{subtitle}</p>
         </div>
-        <div className={`w-12 h-12 rounded-xl bg-[#FFFBF5]/80 flex items-center justify-center shadow-sm ${iconColor}`}>
-          <Icon size={24} />
+        <div className={`w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-[#FFFBF5]/80 flex items-center justify-center shadow-sm ${iconColor} flex-shrink-0`}>
+          <Icon size={18} className="sm:hidden" />
+          <Icon size={24} className="hidden sm:block" />
         </div>
       </div>
     </div>

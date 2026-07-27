@@ -195,8 +195,8 @@ export default function CustomersPage() {
 
         {/* Customers table */}
         <div className="glass rounded-2xl overflow-hidden tilt-card">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
+            <table className="w-full text-xs sm:text-sm min-w-[620px]">
               <thead className="bg-[#FDF6E3]/50 text-left">
                 <tr>
                   <th className="px-6 py-4 font-semibold text-[#5C4033]">Nom</th>
