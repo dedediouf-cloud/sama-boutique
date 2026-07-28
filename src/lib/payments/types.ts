@@ -25,3 +25,22 @@ export interface PaymentProviderInterface {
   initiatePayment(request: PaymentRequest): Promise<PaymentResponse>;
   checkStatus(transactionId: string): Promise<PaymentStatusResponse>;
 }
+
+/**
+ * Configuration des identifiants marchands par boutique
+ * (chargée depuis BoutiqueSettings)
+ */
+export interface MerchantCredentials {
+  // Wave
+  waveMerchantId?: string | null;
+  waveApiKey?: string | null;
+  waveSecret?: string | null;
+
+  // Orange Money
+  omMerchantCode?: string | null;
+  omApiKey?: string | null;
+  omClientSecret?: string | null;
+
+  // Optionnel
+  merchantPhone?: string | null;
+}

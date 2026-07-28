@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getPaymentProvider } from "@/lib/payments";
+import { getMerchantCredentials } from "@/lib/payments/credentials";
 
 export async function POST(
   request: Request,
@@ -59,7 +60,10 @@ export async function POST(
       });
     }
 
-    const provider = getPaymentProvider(paymentMethod);
+    // Charger les identifiants marchands de la boutique
+    const credentials = await getMerchantCredentials(user.id);
+    const provider = getPaymentProvider(paymentMethod, credentials || undefined);
+
     const paymentResult = await provider.initiatePayment({
       amount: total,
       phone: customerPhone,

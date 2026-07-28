@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 import { getPaymentProvider } from "@/lib/payments";
+import { getMerchantCredentials } from "@/lib/payments/credentials";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -97,7 +98,10 @@ export async function POST(request: Request) {
         throw new Error("Numéro de téléphone requis pour le paiement mobile");
       }
 
-      const provider = getPaymentProvider(method);
+      // Charger les identifiants marchands de la boutique
+      const credentials = await getMerchantCredentials(ownerId);
+      const provider = getPaymentProvider(method, credentials || undefined);
+
       const paymentResult = await provider.initiatePayment({
         amount: finalTotal,
         phone: paymentPhone,

@@ -3,18 +3,26 @@ import {
   PaymentRequest,
   PaymentResponse,
   PaymentStatusResponse,
+  MerchantCredentials,
 } from "./types";
 
 export class OrangeMoneyProvider implements PaymentProviderInterface {
   name = "Orange Money";
+  private credentials?: MerchantCredentials;
+
+  constructor(credentials?: MerchantCredentials) {
+    this.credentials = credentials;
+  }
 
   async initiatePayment(request: PaymentRequest): Promise<PaymentResponse> {
     // TODO: Remplacer par l'appel API réel d'Orange Money
     // Documentation: https://developer.orange.com/apis/money-webdev/
 
-    console.log(`[Orange Money MOCK] Initier paiement de ${request.amount} FCFA vers ${request.phone}`);
+    const merchantCode = this.credentials?.omMerchantCode || "MOCK";
+    console.log(`[Orange Money] Initier paiement de ${request.amount} FCFA vers ${request.phone} (merchant: ${merchantCode})`);
 
-    // Simulation : succès aléatoire pour démonstration
+    // Pour l'instant on reste en mode simulation (Phase 1 terminée)
+    // Les vrais appels API seront ajoutés en Phase 2
     const success = true;
     const transactionId = `OM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
@@ -31,7 +39,7 @@ export class OrangeMoneyProvider implements PaymentProviderInterface {
   async checkStatus(transactionId: string): Promise<PaymentStatusResponse> {
     // TODO: Remplacer par l'appel API réel de vérification
 
-    console.log(`[Orange Money MOCK] Vérifier statut de ${transactionId}`);
+    console.log(`[Orange Money] Vérifier statut de ${transactionId}`);
 
     // Simulation : après vérification, on considère que c'est payé
     return {

@@ -17,6 +17,7 @@ import {
   TruckIcon,
   Tag,
   Factory,
+  Settings,
 } from "lucide-react";
 import { isAdmin } from "@/lib/roles";
 import { Trans } from "@/components/Trans";
@@ -128,6 +129,19 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
                 <UserCog size={18} />
               </span>
               <span className="font-medium">Employés</span>
+            </a>
+          )}
+
+          {isAdmin(session?.user?.role) && (
+            <a
+              href="/settings"
+              onClick={closeMobile}
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group ${pathname === "/settings" ? "bg-gradient-to-r from-[#C9A9A6]/20 to-[#C9A9A6]/5 text-[#F7E7CE] border border-[#C9A9A6]/30 shadow-lg shadow-[#C9A9A6]/10" : "text-[#F7E7CE]/70 hover:text-[#F7E7CE] hover:bg-[#C9A9A6]/10 hover:border hover:border-[#C9A9A6]/20"}`}
+            >
+              <span className={`transition-transform duration-300 group-hover:scale-110 ${pathname === "/settings" ? "text-[#C9A9A6]" : ""}`}>
+                <Settings size={18} />
+              </span>
+              <span className="font-medium">Paramètres</span>
             </a>
           )}
 
