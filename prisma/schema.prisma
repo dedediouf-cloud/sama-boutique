@@ -339,3 +339,12 @@ model ReferralReward {
   referrer User @relation("ReferrerRewards", fields: [referrerId], references: [id], onDelete: Cascade)
   referred User @relation("ReferredRewards", fields: [referredId], references: [id], onDelete: Cascade)
 }
+
+model BoutiqueSettings {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  paymentsEnabled Boolean  @default(true)
+  // autres champs...
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
