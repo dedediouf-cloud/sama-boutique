@@ -338,3 +338,26 @@ model ReferralReward {
   referrer      User     @relation("ReferrerRewards", fields: [referrerId], references: [id], onDelete: Cascade)
   referred      User     @relation("ReferredRewards", fields: [referredId], references: [id], onDelete: Cascade)
 }
+
+model BoutiqueSettings {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id])
+
+  // === PAIEMENTS MOBILES (par boutique) ===
+  waveMerchantId      String?
+  waveApiKey          String?
+  waveSecret          String?
+
+  omMerchantCode      String?
+  omApiKey            String?
+  omClientSecret      String?
+
+  // Options générales
+  paymentsEnabled     Boolean  @default(false)
+  defaultPaymentMethod String? // "wave" | "orange_money" | "cash"
+  merchantPhone       String? // numéro marchand si différent du phone principal
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
