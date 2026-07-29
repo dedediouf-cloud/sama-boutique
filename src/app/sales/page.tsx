@@ -266,84 +266,121 @@ export default function SalesPage() {
     }
   };
 
-  const generateInvoice = (sale: any) => {
-    const doc = new jsPDF();
-    const shopName = session?.user?.shopName || "Ma Boutique";
-    const shopPhone = session?.user?.phone || "";
-    const shopEmail = session?.user?.email || "";
-    const saleDate = new Date(sale.createdAt);
-    const dateStr = saleDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
-    const shortId = sale.id.slice(-4).toUpperCase();
-    const invoiceNumber = `FACT-${saleDate.getFullYear()}${String(saleDate.getMonth() + 1).padStart(2, "0")}${String(saleDate.getDate()).padStart(2, "0")}-${shortId}`;
-    const customerName = sale.customer?.name || "Client de passage";
-    const customerPhone = sale.customer?.phone || "";
-
-    doc.setFillColor(197, 160, 40);
-    doc.rect(0, 0, 210, 45, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
-    doc.setFont("helvetica", "bold");
-    doc.text(shopName, 20, 25);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    if (shopPhone) doc.text(`Téléphone : ${shopPhone}`, 20, 33);
-    if (shopEmail) doc.text(`Email : ${shopEmail}`, 20, 39);
-    doc.setFontSize(28);
-    doc.setFont("helvetica", "bold");
-    doc.text("FACTURE", 190, 25, { align: "right" });
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`N° ${invoiceNumber}`, 190, 33, { align: "right" });
-    doc.text(`Date : ${dateStr}`, 190, 39, { align: "right" });
-
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("Facturé à", 20, 60);
-    doc.setFont("helvetica", "normal");
-    doc.text(customerName, 20, 67);
-    if (customerPhone) doc.text(`Téléphone : ${customerPhone}`, 20, 74);
-
-    doc.setFont("helvetica", "bold");
-    doc.text("Paiement", 20, 84);
-    doc.setFont("helvetica", "normal");
-    doc.text(paymentLabels[sale.paymentMethod] || "Espèces", 20, 91);
-
-    const body = sale.items.map((item: any) => [
-      item.product.name,
-      item.quantity,
-      `${formatPrice(item.price)} FCFA`,
-      `${formatPrice(item.price * item.quantity)} FCFA`,
-    ]);
-
-    const foot: any[] = [["", "", "Sous-total", `${formatPrice(sale.total)} FCFA`]];
-    if (sale.discount > 0) {
-      foot.push(["", "", "Remise", `-${formatPrice(sale.discount)} FCFA`]);
-      if (sale.promotion?.name) {
-        foot.push(["", "", `Promotion (${sale.promotion.name})`, ""]);
-      }
-    }
-    foot.push(["", "", "TOTAL", `${formatPrice(sale.finalTotal)} FCFA`]);
-
-    autoTable(doc, {
-      startY: 100,
-      head: [["Produit", "Quantité", "Prix unitaire", "Total"]],
-      body,
-      foot,
-      headStyles: { fillColor: [197, 160, 40], textColor: 255, fontStyle: "bold" },
-      footStyles: { fillColor: [253, 246, 227], textColor: [61, 43, 31], fontStyle: "bold" },
-      styles: { fontSize: 10, cellPadding: 5 },
-      columnStyles: { 0: { cellWidth: 80 }, 1: { halign: "center" }, 2: { halign: "right" }, 3: { halign: "right" } },
+  // === TICKET DE CAISSE (format reçu thermique 80mm) ===
+  const generateReceipt = (sale: any) => {
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: [80, 210], // Format ticket 80mm
     });
 
-    const finalY = (doc as any).lastAutoTable?.finalY || 140;
-    doc.setFontSize(10);
-    doc.setTextColor(92, 64, 51);
-    doc.text("Merci pour votre confiance !", 105, finalY + 15, { align: "center" });
-    doc.text("Les produits vendus ne sont ni repris ni échangés.", 105, finalY + 21, { align: "center" });
+    const shopName = session?.user?.shopName || "Ma Boutique";
+    const shopPhone = session?.user?.phone || "";
+    const saleDate = new Date(sale.createdAt);
+    const dateStr = saleDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
+    const timeStr = saleDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    const shortId = sale.id.slice(-6).toUpperCase();
+    const ticketNumber = `T-${shortId}`;
+    const customerName = sale.customer?.name || "Client";
 
-    doc.save(`facture-${invoiceNumber}.pdf`);
+    let y = 6;
+
+    // === EN-TÊTE ===
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "bold");
+    doc.text(shopName, 40, y, { align: "center" });
+    y += 4;
+
+    if (shopPhone) {
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.text(shopPhone, 40, y, { align: "center" });
+      y += 3;
+    }
+
+    doc.setFontSize(6);
+    doc.text("--------------------------------", 40, y, { align: "center" });
+    y += 4;
+
+    // Date + Ticket
+    doc.setFontSize(7);
+    doc.text(`${dateStr} ${timeStr}`, 5, y);
+    doc.text(`N° ${ticketNumber}`, 75, y, { align: "right" });
+    y += 4;
+
+    doc.setFontSize(6);
+    doc.text("--------------------------------", 40, y, { align: "center" });
+    y += 5;
+
+    // Client
+    doc.setFontSize(7);
+    doc.text(`Client: ${customerName}`, 5, y);
+    y += 5;
+
+    // === ARTICLES ===
+    doc.setFontSize(7);
+    sale.items.forEach((item: any) => {
+      const name = (item.product?.name || item.productName || "Produit").substring(0, 22);
+      const qty = item.quantity;
+      const price = item.price || 0;
+      const lineTotal = qty * price;
+
+      doc.text(name, 5, y);
+      doc.text(`${qty} x ${formatPrice(price)}`, 75, y, { align: "right" });
+      y += 3.5;
+
+      doc.text(`${formatPrice(lineTotal)} FCFA`, 75, y, { align: "right" });
+      y += 4.5;
+    });
+
+    y += 1;
+    doc.setFontSize(6);
+    doc.text("--------------------------------", 40, y, { align: "center" });
+    y += 5;
+
+    // === TOTAUX ===
+    doc.setFontSize(7);
+    doc.text("Sous-total", 5, y);
+    doc.text(`${formatPrice(sale.total)} FCFA`, 75, y, { align: "right" });
+    y += 4;
+
+    if (sale.discount > 0) {
+      doc.text("Remise", 5, y);
+      doc.text(`-${formatPrice(sale.discount)}`, 75, y, { align: "right" });
+      y += 4;
+    }
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.text("TOTAL", 5, y);
+    doc.text(`${formatPrice(sale.finalTotal)} FCFA`, 75, y, { align: "right" });
+    y += 6;
+
+    // Paiement
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Paiement: ${paymentLabels[sale.paymentMethod] || "Espèces"}`, 5, y);
+    y += 5;
+
+    doc.setFontSize(6);
+    doc.text("--------------------------------", 40, y, { align: "center" });
+    y += 6;
+
+    // === PIED DE PAGE ===
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "bold");
+    doc.text("MERCI DE VOTRE ACHAT !", 40, y, { align: "center" });
+    y += 5;
+
+    doc.setFontSize(6);
+    doc.setFont("helvetica", "normal");
+    doc.text("Bonne journée", 40, y, { align: "center" });
+
+    doc.save(`ticket-caisse-${ticketNumber}.pdf`);
   };
+
+  // Alias pour garder la compatibilité
+  const generateInvoice = generateReceipt;
 
   const filteredProducts = products.filter((p) =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -362,7 +399,7 @@ export default function SalesPage() {
             </h1>
             <p className="text-[#5C4033] mt-1 flex items-center gap-2">
               <ShoppingCart size={16} className="text-[#B87333]" />
-              Enregistrez vos ventes et générez des factures
+              Caisse • Ticket de caisse généré automatiquement
             </p>
           </div>
           <div className="glass rounded-2xl p-1.5 flex gap-1">
@@ -603,10 +640,10 @@ export default function SalesPage() {
                       <Receipt size={18} />
                       {submittingSale ? "Validation en cours..." : (
                         paymentMethod === "cash"
-                          ? "Valider la vente et facturer"
+                          ? "Valider la vente + Ticket"
                           : paymentMethod === "orange_money"
-                          ? "Valider et demander paiement Orange Money"
-                          : "Valider et demander paiement Wave"
+                          ? "Valider + Payer Orange Money"
+                          : "Valider + Payer Wave"
                       )}
                     </button>
                   </div>
@@ -666,6 +703,13 @@ export default function SalesPage() {
                           </td>
                           <td className="px-3 sm:px-6 py-3 sm:py-4">
                             <div className="flex items-center gap-1.5">
+                              <button 
+                                onClick={() => generateInvoice(s)} 
+                                className="px-2 py-1 rounded-md bg-[#D4AF37]/10 text-[#B87333] text-[10px] font-medium hover:bg-[#D4AF37]/20 transition-colors active:scale-[0.95] touch-manipulation min-h-[28px]"
+                              >
+                                Ticket
+                              </button>
+
                               {s.paymentMethod !== "cash" && s.paymentStatus === "pending" && (
                                 <button 
                                   onClick={() => verifyPayment(s.id)} 
