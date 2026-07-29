@@ -188,6 +188,29 @@ export default function SuppliersPage() {
     fetchOrders();
   };
 
+  const deleteSupplier = async (id: string, name: string) => {
+    if (!confirm(`Supprimer le fournisseur "${name}" ?\n\nCette action est irréversible.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/suppliers/${id}`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        alert("✅ Fournisseur supprimé");
+        fetchSuppliers();
+      } else {
+        alert(data.error || "Impossible de supprimer ce fournisseur");
+      }
+    } catch (err) {
+      alert("Erreur réseau lors de la suppression");
+    }
+  };
+
   if (!isAdmin(session?.user?.role)) return null;
 
   const filteredOrders = orders.filter((o) =>
@@ -477,6 +500,7 @@ export default function SuppliersPage() {
                   <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Téléphone</th>
                   <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Email</th>
                   <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Adresse</th>
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 font-semibold text-[#5C4033]">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#D4AF37]/10">
@@ -493,6 +517,15 @@ export default function SuppliersPage() {
                     <td className="px-6 py-4 text-[#5C4033]">{s.phone || "-"}</td>
                     <td className="px-6 py-4 text-[#5C4033]">{s.email || "-"}</td>
                     <td className="px-6 py-4 text-[#5C4033]">{s.address || "-"}</td>
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={() => deleteSupplier(s.id, s.name)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors text-xs font-medium border border-red-200 active:scale-[0.97]"
+                      >
+                        <Trash2 size={14} />
+                        Supprimer
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
