@@ -42,6 +42,7 @@ model User {
   rewardsFrom           ReferralReward[] @relation("ReferredRewards")
   referredBy            User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referralsMade         User[]  @relation("UserReferrals")
+  settings              BoutiqueSettings? @relation("UserToBoutiqueSettings")
 }
 
 model StockEntry {
@@ -342,7 +343,7 @@ model ReferralReward {
 model BoutiqueSettings {
   id                  String   @id @default(cuid())
   userId              String   @unique
-  user                User     @relation(fields: [userId], references: [id])
+  user                User     @relation("UserToBoutiqueSettings", fields: [userId], references: [id])
 
   // === PAIEMENTS MOBILES (par boutique) ===
   waveMerchantId      String?
