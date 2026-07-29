@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 import { getPaymentProvider } from "@/lib/payments";
+import { getMerchantCredentials } from "@/lib/payments/credentials";
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
@@ -29,7 +30,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Aucune transaction trouvée" }, { status: 404 });
     }
 
-    const provider = getPaymentProvider(transaction.provider as any);
+    const credentials = await getMerchantCredentials(ownerId);
+    const provider = getPaymentProvider(transaction.provider as any, credentials || undefined);
     const statusResult = await provider.checkStatus(transaction.reference || transaction.id);
 
     // Mise à jour du statut

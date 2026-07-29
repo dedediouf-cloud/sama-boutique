@@ -18,7 +18,11 @@ interface PaymentSettings {
   defaultPaymentMethod: string | null;
   merchantPhone: string | null;
   waveMerchantId: string | null;
+  waveApiKey: string | null;
+  waveSecret: string | null;
   omMerchantCode: string | null;
+  omApiKey: string | null;
+  omClientSecret: string | null;
 }
 
 export default function SettingsPage() {
@@ -28,7 +32,11 @@ export default function SettingsPage() {
     defaultPaymentMethod: "cash",
     merchantPhone: "",
     waveMerchantId: "",
+    waveApiKey: "",
+    waveSecret: "",
     omMerchantCode: "",
+    omApiKey: "",
+    omClientSecret: "",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,7 +58,11 @@ export default function SettingsPage() {
           defaultPaymentMethod: data.defaultPaymentMethod ?? "cash",
           merchantPhone: data.merchantPhone ?? "",
           waveMerchantId: data.waveMerchantId ?? "",
+          waveApiKey: "",
+          waveSecret: "",
           omMerchantCode: data.omMerchantCode ?? "",
+          omApiKey: "",
+          omClientSecret: "",
         });
       }
     } catch (err) {
@@ -76,11 +88,11 @@ export default function SettingsPage() {
           defaultPaymentMethod: settings.defaultPaymentMethod,
           merchantPhone: settings.merchantPhone || null,
           waveMerchantId: settings.waveMerchantId || null,
-          waveApiKey: null, // pour l'instant on ne gère pas les clés secrètes ici
-          waveSecret: null,
+          waveApiKey: settings.waveApiKey || null,
+          waveSecret: settings.waveSecret || null,
           omMerchantCode: settings.omMerchantCode || null,
-          omApiKey: null,
-          omClientSecret: null,
+          omApiKey: settings.omApiKey || null,
+          omClientSecret: settings.omClientSecret || null,
         }),
       });
 
@@ -204,6 +216,20 @@ export default function SettingsPage() {
                     disabled={!isUserAdmin}
                     className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] font-mono text-sm"
                   />
+                </div>
+
+                {/* Champs secrets Wave (Phase 2) */}
+                <div>
+                  <label className="block text-sm font-medium text-[#5C4033] mb-1.5">Wave Secret (API Key)</label>
+                  <input
+                    type="password"
+                    value={settings.waveSecret || ""}
+                    onChange={(e) => setSettings({ ...settings, waveSecret: e.target.value })}
+                    placeholder="secret_xxxxxxxxxxxxxxxx"
+                    disabled={!isUserAdmin}
+                    className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] font-mono text-sm"
+                  />
+                  <p className="text-xs text-[#5C4033]/60 mt-1">Clé secrète fournie dans le dashboard Wave Business (ne jamais partager)</p>
                 </div>
               </div>
             </div>
