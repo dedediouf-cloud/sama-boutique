@@ -11,7 +11,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "vercel-build": "prisma generate --schema=prisma/schema.prod.prisma && prisma db push --schema=prisma/schema.prod.prisma && next build"
+    "vercel-build": "prisma generate --schema=prisma/schema.prod.prisma && next build"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
