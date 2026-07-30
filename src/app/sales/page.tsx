@@ -254,14 +254,12 @@ export default function SalesPage() {
       fetchProducts();
       fetchSales();
 
-      // Génère le ticket automatiquement (téléchargement + option impression)
+      // ✅ Impression DIRECTE du ticket (boîte d'impression s'ouvre automatiquement)
       setTimeout(() => {
         if (data) {
-          downloadTicket(data);
-          // Optionnel : on peut aussi ouvrir l'impression directe
-          // printTicket(data);
+          printTicket(data);
         }
-      }, 20);
+      }, 30);
 
     } catch (err: any) {
       // console.error("Erreur validation vente:", err);
@@ -452,7 +450,7 @@ export default function SalesPage() {
             </h1>
             <p className="text-[#5C4033] mt-1 flex items-center gap-2">
               <ShoppingCart size={16} className="text-[#B87333]" />
-              Caisse • Ticket de caisse généré automatiquement
+              Caisse • Impression directe à la validation • 📥 PDF disponible dans l’historique
             </p>
           </div>
           <div className="glass rounded-2xl p-1.5 flex gap-1">
@@ -693,7 +691,7 @@ export default function SalesPage() {
                       <Receipt size={18} />
                       {submittingSale ? "Validation en cours..." : (
                         paymentMethod === "cash"
-                          ? "Valider la vente + Ticket"
+                          ? "Valider la vente + Imprimer"
                           : paymentMethod === "orange_money"
                           ? "Valider + Payer Orange Money"
                           : "Valider + Payer Wave"
