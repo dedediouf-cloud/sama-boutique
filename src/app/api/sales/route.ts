@@ -116,6 +116,15 @@ export async function POST(request: Request) {
       paymentRef = paymentResult.transactionId || null;
     }
 
+    // Find current open cash session (if any)
+    const currentCashSession = await prisma.cashSession.findFirst({
+      where: {
+        userId: ownerId,
+        status: "OPEN",
+      },
+      orderBy: { openedAt: "desc" },
+    });
+
     const sale = await prisma.$transaction(async (tx) => {
       const createdSale = await tx.sale.create({
         data: {
@@ -130,6 +139,7 @@ export async function POST(request: Request) {
           paymentRef,
           promotionId: promotionIdToSet,
           earnedFidelityPoints,
+          cashSessionId: currentCashSession?.id || null,
           items: {
             create: saleItems,
           },

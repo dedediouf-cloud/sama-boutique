@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import CashSessionModal from "@/components/CashSessionModal";
 import { useSession } from "next-auth/react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { formatPrice } from "@/lib/utils";
@@ -58,6 +59,8 @@ export default function SalesPage() {
   const [activeTab, setActiveTab] = useState<"pos" | "history">("pos");
   const [submittingSale, setSubmittingSale] = useState(false);
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
+  const [cashSession, setCashSession] = useState<any>(null);
+  const [showCashModal, setShowCashModal] = useState(false);
 
   const toggleSaleDetails = (saleId: string) => {
     setExpandedSaleId(expandedSaleId === saleId ? null : saleId);
@@ -68,7 +71,20 @@ export default function SalesPage() {
     fetchCustomers();
     fetchSales();
     fetchPromotions();
+    fetchCurrentCashSession();
   }, []);
+
+  const fetchCurrentCashSession = async () => {
+    try {
+      const res = await fetch("/api/cash-sessions");
+      if (res.ok) {
+        const data = await res.json();
+        setCashSession(data);
+      }
+    } catch (err) {
+      // ignore
+    }
+  };
 
   const fetchProducts = async () => {
     try {
@@ -603,6 +619,58 @@ export default function SalesPage() {
 
         {error && <div className="bg-red-50/80 border border-red-200 text-red-700 px-5 py-4 rounded-2xl">{error}</div>}
 
+        {/* Cash Session Banner */}
+        <div className="flex items-center justify-between bg-white/70 border border-[#D4AF37]/20 rounded-2xl px-5 py-3">
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full ${cashSession ? "bg-green-500" : "bg-[#B87333]"}`}></div>
+            <span className="text-sm font-medium text-[#3D2B1F]">
+              {cashSession 
+                ? `Caisse ouverte • ${formatPrice(cashSession.openingAmount)} FCFA` 
+                : "Caisse fermée"}
+            </span>
+            {cashSession && (
+              <span className="text-xs text-[#5C4033]/60">
+                depuis {new Date(cashSession.openedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            {!cashSession ? (
+              <button
+                onClick={() => setShowCashModal(true)}
+                className="px-4 py-1.5 text-sm rounded-xl bg-[#B87333] text-white hover:bg-[#8B5A2B] transition-colors"
+              >
+                Ouvrir la caisse
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  const closing = prompt("Montant de clôture (FCFA) :");
+                  if (!closing) return;
+                  try {
+                    const res = await fetch(`/api/cash-sessions/${cashSession.id}/close`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ closingAmount: parseFloat(closing) }),
+                    });
+                    if (res.ok) {
+                      alert("Caisse clôturée avec succès");
+                      setCashSession(null);
+                      fetchSales();
+                    }
+                  } catch (e) {
+                    alert("Erreur lors de la clôture");
+                  }
+                }}
+                className="px-4 py-1.5 text-sm rounded-xl border border-[#B87333] text-[#B87333] hover:bg-[#B87333]/10 transition-colors"
+              >
+                Clôturer la caisse
+              </button>
+            )}
+          </div>
+        </div>
+
         {activeTab === "pos" ? (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-6">
             {/* Products selection */}
@@ -977,6 +1045,15 @@ export default function SalesPage() {
           </div>
         )}
       </div>
+
+      <CashSessionModal
+        isOpen={showCashModal}
+        onClose={() => setShowCashModal(false)}
+        onOpened={(newSession) => {
+          setCashSession(newSession);
+          setShowCashModal(false);
+        }}
+      />
     </ProtectedRoute>
   );
 }

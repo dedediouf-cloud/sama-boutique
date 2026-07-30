@@ -43,8 +43,7 @@ model User {
   referredBy            User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referralsMade         User[]  @relation("UserReferrals")
   settings              BoutiqueSettings? @relation("UserToBoutiqueSettings")
-
-
+  cashSessions          CashSession[]
 }
 
 model StockEntry {
@@ -159,6 +158,9 @@ model Sale {
 
   promotionId String?
   promotion   Promotion? @relation(fields: [promotionId], references: [id])
+
+  cashSessionId String?
+  cashSession   CashSession? @relation(fields: [cashSessionId], references: [id])
 
   items         SaleItem[]
   transactions  PaymentTransaction[]
@@ -365,4 +367,26 @@ model BoutiqueSettings {
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+model CashSession {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+
+  openedAt       DateTime  @default(now())
+  closedAt       DateTime?
+
+  openingAmount  Float     @default(0)
+  closingAmount  Float?
+  expectedAmount Float?
+  difference     Float?
+
+  status         String    @default("OPEN") // OPEN | CLOSED
+  note           String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sales          Sale[]
 }
