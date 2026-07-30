@@ -269,7 +269,7 @@ export default function SalesPage() {
     }
   };
 
-  // === TICKET DE CAISSE 80mm - VERSION CORRIGÉE DÉFINITIVE (lignes vectorielles) ===
+  // === TICKET THERMIQUE 80mm (pour impression directe) ===
   const generateTicketPDF = (sale: any, autoPrint: boolean = false) => {
     const doc = new jsPDF({
       orientation: "portrait",
@@ -287,21 +287,19 @@ export default function SalesPage() {
 
     let y = 5;
 
-    // === Séparateur fiable (ligne vectorielle) ===
     const drawLine = (yy: number) => {
       doc.setDrawColor(120, 90, 60);
       doc.setLineWidth(0.25);
       doc.line(4, yy, 76, yy);
     };
 
-    // === EN-TÊTE ===
+    // Header (80mm)
     let logoAdded = false;
     try {
       doc.addImage("/logo.png", "PNG", 29, y, 22, 22);
       logoAdded = true;
       y += 25;
     } catch (e) {
-      // Fallback
       doc.setFillColor(197, 160, 40);
       doc.circle(40, y + 9, 9, "F");
       doc.setTextColor(255, 255, 255);
@@ -326,7 +324,6 @@ export default function SalesPage() {
     drawLine(y);
     y += 4;
 
-    // N° + Date
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
     doc.text(`N° ${ticketNumber}`, 5, y);
@@ -337,12 +334,11 @@ export default function SalesPage() {
     drawLine(y);
     y += 4;
 
-    // Client
     doc.setFontSize(7.5);
     doc.text(`Client : ${customerName}`, 5, y);
     y += 5.5;
 
-    // === ARTICLES ===
+    // Articles
     doc.setFontSize(6.5);
     doc.setFont("helvetica", "bold");
     doc.text("Article", 5, y);
@@ -375,7 +371,7 @@ export default function SalesPage() {
     drawLine(y);
     y += 4.5;
 
-    // === TOTAUX ===
+    // Totaux
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "normal");
     doc.text("Sous-total", 5, y);
@@ -388,7 +384,6 @@ export default function SalesPage() {
       y += 4;
     }
 
-    // TOTAL PROMINENT + soulignement
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.text("TOTAL", 5, y);
@@ -397,7 +392,6 @@ export default function SalesPage() {
     doc.line(5, y + 1.5, 75, y + 1.5);
     y += 6;
 
-    // Paiement
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "normal");
     doc.text(`Paiement : ${paymentLabels[sale.paymentMethod] || "Espèces"}`, 5, y);
@@ -406,7 +400,6 @@ export default function SalesPage() {
     drawLine(y);
     y += 5;
 
-    // === FOOTER ===
     doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
     doc.text("MERCI DE VOTRE ACHAT !", 40, y, { align: "center" });
@@ -416,18 +409,153 @@ export default function SalesPage() {
     doc.setFont("helvetica", "normal");
     doc.text("Bonne journée", 40, y, { align: "center" });
 
-    // Sauvegarde / Impression
     if (autoPrint) {
       doc.autoPrint();
-      const blobUrl = doc.output("bloburl");
-      window.open(blobUrl, "_blank");
+      window.open(doc.output("bloburl"), "_blank");
     } else {
       doc.save(`ticket-caisse-${ticketNumber}.pdf`);
     }
   };
 
+  // === FACTURE A4 (pour le bouton PDF dans l'historique) ===
+  const generateA4PDF = (sale: any) => {
+    const doc = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+
+    const shopName = session?.user?.shopName || "Ma Boutique";
+    const shopPhone = session?.user?.phone || "";
+    const saleDate = new Date(sale.createdAt);
+    const fullDate = saleDate.toLocaleDateString("fr-FR", {
+      weekday: "long",
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+    });
+    const timeStr = saleDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    const ticketNumber = `T-${sale.id.slice(-6).toUpperCase()}`;
+    const customerName = sale.customer?.name || "Client de passage";
+
+    let y = 15;
+
+    // Header
+    doc.setFontSize(22);
+    doc.setFont("helvetica", "bold");
+    doc.text(shopName, 105, y, { align: "center" });
+    y += 8;
+
+    if (shopPhone) {
+      doc.setFontSize(11);
+      doc.text(shopPhone, 105, y, { align: "center" });
+      y += 7;
+    }
+
+    doc.setDrawColor(180, 140, 80);
+    doc.setLineWidth(0.5);
+    doc.line(20, y, 190, y);
+    y += 10;
+
+    // Titre
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("FACTURE", 105, y, { align: "center" });
+    y += 10;
+
+    // Infos
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`N° ${ticketNumber}`, 20, y);
+    doc.text(`${fullDate} à ${timeStr}`, 190, y, { align: "right" });
+    y += 7;
+
+    doc.text(`Client : ${customerName}`, 20, y);
+    y += 12;
+
+    // Tableau articles
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("Désignation", 22, y);
+    doc.text("Qté", 110, y);
+    doc.text("Prix unit.", 135, y);
+    doc.text("Total", 175, y);
+    y += 2;
+
+    doc.setDrawColor(150);
+    doc.line(20, y, 190, y);
+    y += 6;
+
+    doc.setFont("helvetica", "normal");
+
+    if (sale.items && Array.isArray(sale.items)) {
+      sale.items.forEach((item: any) => {
+        const name = String(item.product?.name || item.productName || "Produit");
+        const qty = item.quantity || 1;
+        const price = item.price || 0;
+        const lineTotal = qty * price;
+
+        doc.text(name.substring(0, 45), 22, y);
+        doc.text(String(qty), 112, y);
+        doc.text(formatPrice(price), 138, y);
+        doc.text(formatPrice(lineTotal), 172, y);
+        y += 7;
+      });
+    }
+
+    y += 6;
+    doc.setDrawColor(150);
+    doc.line(20, y, 190, y);
+    y += 8;
+
+    // Totaux
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.text("Sous-total", 120, y);
+    doc.text(formatPrice(sale.total || 0) + " FCFA", 175, y);
+    y += 8;
+
+    if (sale.discount > 0) {
+      doc.text("Remise", 120, y);
+      doc.text("-" + formatPrice(sale.discount) + " FCFA", 175, y);
+      y += 8;
+    }
+
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("TOTAL", 120, y);
+    doc.text(formatPrice(sale.finalTotal || sale.total || 0) + " FCFA", 175, y);
+    y += 12;
+
+    // Paiement
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Mode de paiement : ${paymentLabels[sale.paymentMethod] || "Espèces"}`, 20, y);
+    y += 15;
+
+    // Footer
+    doc.setDrawColor(180, 140, 80);
+    doc.line(20, y, 190, y);
+    y += 10;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text("MERCI DE VOTRE ACHAT", 105, y, { align: "center" });
+    y += 6;
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text("Bonne journée !", 105, y, { align: "center" });
+
+    const fileName = `facture-${ticketNumber}.pdf`;
+    doc.save(fileName);
+  };
+
   // === FONCTIONS PUBLIQUES ===
-  const downloadTicket = (sale: any) => generateTicketPDF(sale, false);
+  // 📥 PDF = Format A4 (facture)
+  const downloadTicket = (sale: any) => generateA4PDF(sale);
+
+  // 🖨️ Imprimer + validation = Format 80mm thermal
   const printTicket = (sale: any) => generateTicketPDF(sale, true);
 
   // Alias pour compatibilité
