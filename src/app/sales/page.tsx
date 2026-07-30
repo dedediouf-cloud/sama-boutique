@@ -271,12 +271,12 @@ export default function SalesPage() {
     }
   };
 
-  // === TICKET DE CAISSE AMÉLIORÉ (format reçu thermique 80mm) ===
+  // === TICKET DE CAISSE 80mm - VERSION CORRIGÉE DÉFINITIVE (lignes vectorielles) ===
   const generateTicketPDF = (sale: any, autoPrint: boolean = false) => {
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",
-      format: [80, 230],
+      format: [80, 300],
     });
 
     const shopName = session?.user?.shopName || "Ma Boutique";
@@ -284,146 +284,146 @@ export default function SalesPage() {
     const saleDate = new Date(sale.createdAt);
     const dateStr = saleDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
     const timeStr = saleDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-    const shortId = sale.id.slice(-6).toUpperCase();
-    const ticketNumber = `T-${shortId}`;
+    const ticketNumber = `T-${sale.id.slice(-6).toUpperCase()}`;
     const customerName = sale.customer?.name || "Client";
 
     let y = 5;
 
-    // === LOGO / EN-TÊTE ===
+    // === Séparateur fiable (ligne vectorielle) ===
+    const drawLine = (yy: number) => {
+      doc.setDrawColor(120, 90, 60);
+      doc.setLineWidth(0.25);
+      doc.line(4, yy, 76, yy);
+    };
+
+    // === EN-TÊTE ===
     let logoAdded = false;
-
-    // Essaie plusieurs formats de logo
-    const possibleLogos = ["/logo.png", "/logo.jpg", "/logo.jpeg"];
-    
-    for (const logoPath of possibleLogos) {
-      try {
-        doc.addImage(logoPath, "PNG", 28, y, 24, 24);
-        logoAdded = true;
-        y += 27;
-        break;
-      } catch (e) {
-        // Continue vers le prochain format
-      }
-    }
-
-    if (!logoAdded) {
-      // Fallback élégant : cercle avec initiales
+    try {
+      doc.addImage("/logo.png", "PNG", 29, y, 22, 22);
+      logoAdded = true;
+      y += 25;
+    } catch (e) {
+      // Fallback
       doc.setFillColor(197, 160, 40);
       doc.circle(40, y + 9, 9, "F");
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(11);
+      doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
-      const initials = shopName.substring(0, 2).toUpperCase();
-      doc.text(initials, 40, y + 12, { align: "center" });
-      y += 22;
+      doc.text(shopName.substring(0, 2).toUpperCase(), 40, y + 12, { align: "center" });
+      y += 20;
     }
-
-    doc.setTextColor(0, 0, 0);
 
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
     doc.text(shopName, 40, y, { align: "center" });
-    y += 5;
+    y += 4.5;
 
     if (shopPhone) {
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
       doc.text(shopPhone, 40, y, { align: "center" });
       y += 4;
     }
 
-    // Ligne pointillée améliorée
-    doc.setFontSize(7);
-    doc.text("═══════════════════════════════", 40, y, { align: "center" });
-    y += 5;
+    drawLine(y);
+    y += 4;
 
-    // Date + N° Ticket (plus visible)
-    doc.setFontSize(8);
+    // N° + Date
+    doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
     doc.text(`N° ${ticketNumber}`, 5, y);
     doc.setFont("helvetica", "normal");
     doc.text(`${dateStr} ${timeStr}`, 75, y, { align: "right" });
-    y += 5;
+    y += 4.5;
 
-    doc.text("═══════════════════════════════", 40, y, { align: "center" });
-    y += 6;
+    drawLine(y);
+    y += 4;
 
     // Client
-    doc.setFontSize(8);
-    doc.text(`Client: ${customerName}`, 5, y);
-    y += 6;
+    doc.setFontSize(7.5);
+    doc.text(`Client : ${customerName}`, 5, y);
+    y += 5.5;
 
     // === ARTICLES ===
-    doc.setFontSize(8);
-    sale.items.forEach((item: any) => {
-      const name = (item.product?.name || item.productName || "Produit").substring(0, 20);
-      const qty = item.quantity;
-      const price = item.price || 0;
-      const lineTotal = qty * price;
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "bold");
+    doc.text("Article", 5, y);
+    doc.text("Total", 75, y, { align: "right" });
+    y += 3;
+    drawLine(y);
+    y += 4;
 
-      doc.setFont("helvetica", "normal");
-      doc.text(name, 5, y);
-      doc.text(`${qty} x ${formatPrice(price)}`, 75, y, { align: "right" });
-      y += 4;
+    if (sale.items && Array.isArray(sale.items)) {
+      sale.items.forEach((item: any) => {
+        const name = String(item.product?.name || item.productName || "Produit").substring(0, 24);
+        const qty = item.quantity || 1;
+        const price = item.price || 0;
+        const lineTotal = qty * price;
 
-      doc.setFont("helvetica", "bold");
-      doc.text(`${formatPrice(lineTotal)} FCFA`, 75, y, { align: "right" });
-      y += 5;
-    });
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.text(name, 5, y);
+        y += 3.2;
 
-    y += 2;
-    doc.setFontSize(7);
-    doc.text("═══════════════════════════════", 40, y, { align: "center" });
-    y += 6;
+        doc.setFontSize(6.5);
+        doc.text(`${qty} × ${formatPrice(price)}`, 5, y);
+        doc.setFont("helvetica", "bold");
+        doc.text(formatPrice(lineTotal), 75, y, { align: "right" });
+        y += 4.5;
+      });
+    }
 
-    // === TOTAUX (plus visibles) ===
-    doc.setFontSize(8);
+    y += 1;
+    drawLine(y);
+    y += 4.5;
+
+    // === TOTAUX ===
+    doc.setFontSize(7.5);
     doc.setFont("helvetica", "normal");
     doc.text("Sous-total", 5, y);
-    doc.text(`${formatPrice(sale.total)} FCFA`, 75, y, { align: "right" });
-    y += 5;
+    doc.text(formatPrice(sale.total || 0), 75, y, { align: "right" });
+    y += 4;
 
     if (sale.discount > 0) {
       doc.text("Remise", 5, y);
       doc.text(`-${formatPrice(sale.discount)}`, 75, y, { align: "right" });
-      y += 5;
+      y += 4;
     }
 
+    // TOTAL PROMINENT + soulignement
     doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
     doc.text("TOTAL", 5, y);
-    doc.text(`${formatPrice(sale.finalTotal)} FCFA`, 75, y, { align: "right" });
-    y += 7;
-
-    // Paiement
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Paiement: ${paymentLabels[sale.paymentMethod] || "Espèces"}`, 5, y);
+    doc.text(`${formatPrice(sale.finalTotal || sale.total || 0)} FCFA`, 75, y, { align: "right" });
+    doc.setLineWidth(0.4);
+    doc.line(5, y + 1.5, 75, y + 1.5);
     y += 6;
 
-    doc.setFontSize(7);
-    doc.text("═══════════════════════════════", 40, y, { align: "center" });
-    y += 7;
+    // Paiement
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Paiement : ${paymentLabels[sale.paymentMethod] || "Espèces"}`, 5, y);
+    y += 5;
 
-    // === PIED DE PAGE ===
+    drawLine(y);
+    y += 5;
+
+    // === FOOTER ===
     doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
     doc.text("MERCI DE VOTRE ACHAT !", 40, y, { align: "center" });
-    y += 5;
+    y += 4.5;
 
-    doc.setFontSize(7);
+    doc.setFontSize(6.5);
     doc.setFont("helvetica", "normal");
     doc.text("Bonne journée", 40, y, { align: "center" });
 
-    // === ACTIONS ===
+    // Sauvegarde / Impression
     if (autoPrint) {
-      // Impression directe
       doc.autoPrint();
-      window.open(doc.output("bloburl"), "_blank");
+      const blobUrl = doc.output("bloburl");
+      window.open(blobUrl, "_blank");
     } else {
-      // Téléchargement PDF
       doc.save(`ticket-caisse-${ticketNumber}.pdf`);
     }
   };
