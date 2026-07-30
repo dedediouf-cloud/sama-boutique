@@ -1,0 +1,55 @@
+================================================================================
+🚀 COMMANDE DÉPLOIEMENT PHASE 2 - COPIE-COLLE DIRECT (Windows PowerShell)
+================================================================================
+
+Ouvre PowerShell et colle TOUT ce bloc d'un coup :
+
+cd C:\sama-boutique
+
+git pull origin main
+
+git add prisma/schema.prisma prisma/schema.prod.prisma prisma/migrations/20260727135352_add_boutique_settings/migration.sql src/lib/payments/* src/app/api/settings/payments/route.ts src/app/api/payments/verify/route.ts src/app/api/payments/webhooks/* src/app/settings/page.tsx src/app/api/sales/route.ts src/app/api/catalog/[shopSlug]/pay/route.ts PHASE-2-PAIEMENTS-REELS.md
+
+git status
+
+git commit -m "Phase 2: Wave + Orange Money réels (API + webhooks)"
+
+git push origin main
+
+Write-Host "✅ PUSH TERMINÉ ! Va maintenant sur Vercel et redeploie avec CLEAR BUILD CACHE" -ForegroundColor Green
+
+================================================================================
+ÉTAPES VERCEL (OBLIGATOIRES)
+================================================================================
+
+1. Va sur https://vercel.com
+2. Ouvre ton projet sama-boutique
+3. Clique sur "Deployments"
+4. Sur le dernier déploiement → les 3 points (...) → "Redeploy"
+5. **COCHE TRÈS IMPORTANT : "Clear build cache"**
+6. Clique sur "Redeploy"
+
+Attends la fin du build (environ 1-2 minutes).
+
+================================================================================
+APRÈS DÉPLOIEMENT
+================================================================================
+
+- Va sur ton site en ligne en tant qu'admin
+- Va dans Paramètres
+- Active les paiements + remplis tes identifiants Wave/Orange Money
+- Teste une vente avec Wave ou Orange Money
+
+Si tout est bon : tu verras des vrais appels API.
+
+================================================================================
+Si tu as une erreur "nothing to commit"
+================================================================================
+
+Exécute ceci :
+
+git add -A
+git commit -m "Phase 2 complete"
+git push
+
+================================================================================

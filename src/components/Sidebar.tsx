@@ -132,7 +132,8 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
             </a>
           )}
 
-          {isAdmin(session?.user?.role) && (
+          {/* === PARAMÈTRES (propriétaire admin + superadmin) === */}
+          {(isAdmin(session?.user?.role) || session?.user?.role === "superadmin") && (
             <a
               href="/settings"
               onClick={closeMobile}
