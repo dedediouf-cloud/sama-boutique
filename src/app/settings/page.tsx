@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { isAdmin } from "@/lib/roles";
 import { useSession } from "next-auth/react";
+import type { ExtendedUser } from "@/types/next-auth";
 import {
   Settings,
   Smartphone,
@@ -48,13 +49,16 @@ export default function SettingsPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(session?.user?.logoUrl || null);
+
+  // Use strongly-typed cast from our augmentation
+  const user = session?.user as ExtendedUser | undefined;
+  const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(user?.logoUrl ?? null);
 
   useEffect(() => {
     fetchSettings();
-    // Load current logo from session if available
-    if (session?.user?.logoUrl) {
-      setCurrentLogoUrl(session.user.logoUrl);
+    // Load current logo from session if available (typed cast)
+    if (user?.logoUrl) {
+      setCurrentLogoUrl(user.logoUrl);
     }
   }, [session]);
 

@@ -96,7 +96,7 @@ export const authOptions: NextAuthOptions = {
         session.user.shopName = token.shopName as string;
         session.user.shopSlug = token.shopSlug as string;
         session.user.phone = token.phone as string;
-        session.user.logoUrl = token.logoUrl as string | undefined;
+        session.user.logoUrl = (token as any).logoUrl ?? null;
         session.user.role = token.role as string;
         session.user.ownerId = token.ownerId as string;
       }

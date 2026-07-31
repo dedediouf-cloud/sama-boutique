@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { formatPrice } from "@/lib/utils";
 import { isAdmin } from "@/lib/roles";
+import type { ExtendedUser } from "@/types/next-auth";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import {
@@ -295,7 +296,8 @@ export default function SalesPage() {
 
     const shopName = session?.user?.shopName || "Ma Boutique";
     const shopPhone = session?.user?.phone || "";
-    const shopLogo = (session?.user as any)?.logoUrl || null;   // Vercel Blob logo
+    const user = session?.user as ExtendedUser | undefined;
+    const shopLogo = user?.logoUrl || null;   // Vercel Blob logo (typed)
     const saleDate = new Date(sale.createdAt);
     const dateStr = saleDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
     const timeStr = saleDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -451,7 +453,8 @@ export default function SalesPage() {
 
     const shopName = session?.user?.shopName || "Ma Boutique";
     const shopPhone = session?.user?.phone || "";
-    const shopLogo = (session?.user as any)?.logoUrl || null;  // Vercel Blob
+    const user = session?.user as ExtendedUser | undefined;
+    const shopLogo = user?.logoUrl || null;  // Vercel Blob (typed)
     const saleDate = new Date(sale.createdAt);
     const fullDate = saleDate.toLocaleDateString("fr-FR", {
       weekday: "long",

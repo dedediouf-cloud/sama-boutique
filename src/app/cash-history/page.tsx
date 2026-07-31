@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { formatPrice } from "@/lib/utils";
 import { useSession } from "next-auth/react";
+import type { ExtendedUser } from "@/types/next-auth";
 import {
   History,
   Calendar,
@@ -105,7 +106,8 @@ export default function CashHistoryPage() {
     link.click();
   };
 
-  const shopLogo = (session?.user as any)?.logoUrl || null;
+  const user = session?.user as ExtendedUser | undefined;
+  const shopLogo = user?.logoUrl || null;
   const shopName = session?.user?.shopName || "Ma Boutique";
 
   return (
