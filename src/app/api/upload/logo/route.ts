@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { put } from "@vercel/blob";
 import { prisma } from "@/lib/prisma";
+
+// Safe dynamic import for Vercel Blob (prevents build failure if package not present)
+async function getBlobClient() {
+  try {
+    const blob = await import("@vercel/blob");
+    return blob;
+  } catch (e) {
+    console.warn("@vercel/blob not installed or failed to load");
+    return null;
+  }
+}
 
 export async function POST(request: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -30,7 +40,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "L'image est trop volumineuse (max 4MB)" }, { status: 400 });
     }
 
-    // Upload to Vercel Blob
+    // Upload to Vercel Blob (dynamic import)
+    const blobModule = await getBlobClient();
+    if (!blobModule?.put) {
+      return NextResponse.json(
+        { error: "Vercel Blob n'est pas configuré. Ajoute BLOB_READ_WRITE_TOKEN dans les variables d'environnement Vercel." },
+        { status: 500 }
+      );
+    }
+
+    const { put } = blobModule;
     const blob = await put(`logos/${ownerId}-${Date.now()}-${file.name}`, file, {
       access: "public",
       contentType: file.type,
