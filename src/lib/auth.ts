@@ -3,6 +3,11 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "./prisma";
 import bcrypt from "bcryptjs";
 
+// Note: We intentionally avoid relying on Prisma generated types for logoUrl
+// because Vercel build cache + Turbopack + prisma generate timing often
+// causes the TS type to be out-of-sync with schema.prod.prisma during `next build`.
+
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -36,9 +41,16 @@ export const authOptions: NextAuthOptions = {
         }
 
         // 2. Chercher dans les commerçants (User)
-        const user = await prisma.user.findUnique({
+        // === CRITICAL VERCEL BUILD FIX (logoUrl) ===
+        // During `next build` (Turbopack + restored cache), @prisma/client types
+        // generated from schema.prod.prisma are STALE and do NOT include `logoUrl`
+        // (even though the field exists in schema.prod.prisma + DB).
+        //
+        // Cast the ENTIRE result to `any` ON THE AWAIT LINE.
+        // Then access .logoUrl directly on the `any` variable (TypeScript allows it).
+        const user = (await prisma.user.findUnique({
           where: { email: credentials.email },
-        });
+        })) as any;
 
         if (user) {
           const isValid = await bcrypt.compare(credentials.password, user.password);
@@ -52,10 +64,16 @@ export const authOptions: NextAuthOptions = {
             shopName: user.shopName,
             shopSlug: user.shopSlug,
             phone: user.phone || undefined,
-            logoUrl: user.logoUrl || undefined,
+            // @ts-ignore — CRITICAL VERCEL FIX
+            // `user` is cast to `any` on the fetch line above.
+            // `logoUrl` exists in schema.prod.prisma + the database.
+            // @prisma/client types are stale during `next build`
+            // (Turbopack + restored build cache).
+            // We force explicit `as any` access here.
+            logoUrl: (user as any).logoUrl || undefined,
             role: "admin",
             ownerId: user.id,
-          };
+          } as any;
         }
 
         // 3. Chercher dans les employés (Employee)
