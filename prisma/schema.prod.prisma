@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -17,10 +17,10 @@ model User {
   phone     String?
   isBlocked Boolean  @default(false)
   subscriptionAmount Float    @default(0)
-  subscriptionStatus String   @default("pending") // pending, paid, overdue
+  subscriptionStatus String   @default("pending")
   subscriptionDueDate DateTime?
   lastPaidAt          DateTime?
-  billingInterval    String   @default("monthly") // monthly, annual
+  billingInterval    String   @default("monthly")
   referralCode       String   @unique
   referredById     String?
   createdAt DateTime @default(now())
@@ -43,6 +43,7 @@ model User {
   referredBy            User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referralsMade         User[]  @relation("UserReferrals")
   settings              BoutiqueSettings? @relation("UserToBoutiqueSettings")
+  cashSessions          CashSession[]
 }
 
 model StockEntry {
@@ -63,7 +64,7 @@ model Employee {
   name      String
   email     String
   password  String
-  role      String   @default("seller") // admin, seller
+  role      String   @default("seller")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   userId    String
@@ -88,7 +89,8 @@ model Product {
   userId String
   user   User   @relation(fields: [userId], references: [id])
 
-  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  // ✅ Relation nommée vers le fournisseur
+  supplier Supplier? @relation("SupplierProducts", fields: [supplierId], references: [id])
 
   saleItems    SaleItem[]
   stockEntries StockEntry[]
@@ -118,7 +120,7 @@ model Promotion {
   id          String    @id @default(cuid())
   code        String?   @unique
   name        String
-  type        String    // percentage, fixed_amount
+  type        String
   value       Float
   minAmount   Float?
   startDate   DateTime?
@@ -138,10 +140,10 @@ model Sale {
   total               Float
   discount            Float    @default(0)
   finalTotal          Float
-  paymentMethod       String?  @default("cash") // cash, orange_money, wave
-  paymentStatus       String?  @default("pending") // pending, paid, failed
+  paymentMethod       String?  @default("cash")
+  paymentStatus       String?  @default("pending")
   paymentRef          String?
-  deliveryType        String?  @default("pickup") // pickup, delivery
+  deliveryType        String?  @default("pickup")
   earnedFidelityPoints Int     @default(0)
   createdAt           DateTime @default(now())
 
@@ -157,6 +159,9 @@ model Sale {
   promotionId String?
   promotion   Promotion? @relation(fields: [promotionId], references: [id])
 
+  cashSessionId String?
+  cashSession   CashSession? @relation(fields: [cashSessionId], references: [id])
+
   items         SaleItem[]
   transactions  PaymentTransaction[]
   delivery      Delivery?
@@ -164,10 +169,10 @@ model Sale {
 
 model PaymentTransaction {
   id        String   @id @default(cuid())
-  provider  String   // orange_money, wave
+  provider  String
   amount    Float
   reference String?
-  status    String   @default("pending") // pending, paid, failed, cancelled
+  status    String   @default("pending")
   phone     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -178,7 +183,7 @@ model PaymentTransaction {
 
 model Delivery {
   id            String   @id @default(cuid())
-  status        String   @default("pending") // pending, preparing, shipped, delivered, cancelled
+  status        String   @default("pending")
   address       String
   phone         String?
   notes         String?
@@ -218,12 +223,13 @@ model Supplier {
   user   User   @relation(fields: [userId], references: [id])
 
   orders   SupplierOrder[]
-  products Product[]   // Relation inverse obligatoire (pour Product.supplier)
+  // ✅ Relation inverse nommée (doit matcher exactement le nom dans Product)
+  products Product[] @relation("SupplierProducts")
 }
 
 model SupplierOrder {
   id           String   @id @default(cuid())
-  status       String   @default("pending") // pending, received, cancelled
+  status       String   @default("pending")
   total        Float
   orderDate    DateTime @default(now())
   receivedDate DateTime?
@@ -258,7 +264,7 @@ model Reservation {
   customerName  String
   customerPhone String?
   quantity      Int      @default(1)
-  status        String   @default("pending") // pending, confirmed, cancelled
+  status        String   @default("pending")
   message       String?
   createdAt     DateTime @default(now())
 
@@ -313,8 +319,8 @@ model SubscriptionPromotion {
   id              String   @id @default(cuid())
   name            String
   code            String?  @unique
-  discountPercent Int?     // ex: 20 pour 20%
-  discountAmount  Float?     // ex: 1000
+  discountPercent Int?
+  discountAmount  Float?
   monthsFree      Int        @default(0)
   active          Boolean    @default(true)
   createdAt       DateTime   @default(now())
@@ -361,4 +367,26 @@ model BoutiqueSettings {
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+model CashSession {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+
+  openedAt       DateTime  @default(now())
+  closedAt       DateTime?
+
+  openingAmount  Float     @default(0)
+  closingAmount  Float?
+  expectedAmount Float?
+  difference     Float?
+
+  status         String    @default("OPEN") // OPEN | CLOSED
+  note           String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sales          Sale[]
 }
