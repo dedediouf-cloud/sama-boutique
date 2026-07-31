@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
@@ -13,7 +13,7 @@ export async function POST(
   }
 
   const { closingAmount, note } = await req.json();
-  const sessionId = params.id;
+  const { id: sessionId } = await params;
 
   const cashSession = await prisma.cashSession.findUnique({
     where: { id: sessionId },
