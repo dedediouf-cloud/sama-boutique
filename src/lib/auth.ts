@@ -52,6 +52,7 @@ export const authOptions: NextAuthOptions = {
             shopName: user.shopName,
             shopSlug: user.shopSlug,
             phone: user.phone || undefined,
+            logoUrl: user.logoUrl || undefined,
             role: "admin",
             ownerId: user.id,
           };
@@ -95,6 +96,7 @@ export const authOptions: NextAuthOptions = {
         session.user.shopName = token.shopName as string;
         session.user.shopSlug = token.shopSlug as string;
         session.user.phone = token.phone as string;
+        session.user.logoUrl = token.logoUrl as string | undefined;
         session.user.role = token.role as string;
         session.user.ownerId = token.ownerId as string;
       }
@@ -105,6 +107,7 @@ export const authOptions: NextAuthOptions = {
         token.shopName = user.shopName;
         token.shopSlug = user.shopSlug;
         token.phone = user.phone;
+        token.logoUrl = (user as any).logoUrl || null;
         token.role = user.role;
         token.ownerId = user.ownerId;
       }

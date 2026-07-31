@@ -295,6 +295,7 @@ export default function SalesPage() {
 
     const shopName = session?.user?.shopName || "Ma Boutique";
     const shopPhone = session?.user?.phone || "";
+    const shopLogo = (session?.user as any)?.logoUrl || null;   // Vercel Blob logo
     const saleDate = new Date(sale.createdAt);
     const dateStr = saleDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
     const timeStr = saleDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -309,13 +310,20 @@ export default function SalesPage() {
       doc.line(4, yy, 76, yy);
     };
 
-    // Header (80mm)
+    // Header (80mm) - uses per-shop logo from Vercel Blob
     let logoAdded = false;
-    try {
-      doc.addImage("/logo.png", "PNG", 29, y, 22, 22);
-      logoAdded = true;
-      y += 25;
-    } catch (e) {
+    if (shopLogo) {
+      try {
+        // Note: addImage works with external URLs in jsPDF (Vercel Blob is public)
+        doc.addImage(shopLogo, "PNG", 29, y, 22, 22);
+        logoAdded = true;
+        y += 25;
+      } catch (e) {
+        // fallback to initials
+      }
+    }
+
+    if (!logoAdded) {
       doc.setFillColor(197, 160, 40);
       doc.circle(40, y + 9, 9, "F");
       doc.setTextColor(255, 255, 255);
@@ -443,6 +451,7 @@ export default function SalesPage() {
 
     const shopName = session?.user?.shopName || "Ma Boutique";
     const shopPhone = session?.user?.phone || "";
+    const shopLogo = (session?.user as any)?.logoUrl || null;  // Vercel Blob
     const saleDate = new Date(sale.createdAt);
     const fullDate = saleDate.toLocaleDateString("fr-FR", {
       weekday: "long",
@@ -456,7 +465,14 @@ export default function SalesPage() {
 
     let y = 15;
 
-    // Header
+    // Header with per-shop logo (Vercel Blob)
+    if (shopLogo) {
+      try {
+        doc.addImage(shopLogo, "PNG", 75, y - 5, 60, 25);
+        y += 28;
+      } catch (e) {}
+    }
+
     doc.setFontSize(22);
     doc.setFont("helvetica", "bold");
     doc.text(shopName, 105, y, { align: "center" });

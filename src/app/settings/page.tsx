@@ -11,6 +11,8 @@ import {
   Save,
   AlertCircle,
   CheckCircle,
+  Image as ImageIcon,
+  Upload,
 } from "lucide-react";
 
 interface PaymentSettings {
@@ -43,10 +45,18 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
 
   const isUserAdmin = isAdmin(session?.user?.role);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(session?.user?.logoUrl || null);
 
   useEffect(() => {
     fetchSettings();
-  }, []);
+    // Load current logo from session if available
+    if (session?.user?.logoUrl) {
+      setCurrentLogoUrl(session.user.logoUrl);
+    }
+  }, [session]);
 
   const fetchSettings = async () => {
     try {
@@ -275,6 +285,120 @@ export default function SettingsPage() {
               </button>
             )}
           </form>
+        </div>
+
+        {/* === LOGO DE LA BOUTIQUE (Vercel Blob) === */}
+        <div className="glass rounded-2xl p-8">
+          <div className="flex items-center gap-3 mb-6">
+            <ImageIcon size={28} className="text-[#B87333]" />
+            <div>
+              <h2 className="font-[family-name:var(--font-playfair)] text-2xl font-semibold text-[#3D2B1F]">
+                Logo de la boutique
+              </h2>
+              <p className="text-sm text-[#5C4033]/70">Ce logo apparaîtra sur les tickets, factures A4 et catalogue</p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            {/* Current logo preview */}
+            {currentLogoUrl && (
+              <div>
+                <p className="text-sm font-medium text-[#5C4033] mb-2">Logo actuel</p>
+                <div className="w-40 h-20 border border-[#D4AF37]/30 rounded-xl overflow-hidden bg-white flex items-center justify-center">
+                  <img 
+                    src={currentLogoUrl} 
+                    alt="Logo boutique" 
+                    className="max-h-16 max-w-[140px] object-contain" 
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Upload form */}
+            {isUserAdmin && (
+              <div>
+                <label className="block text-sm font-medium text-[#5C4033] mb-2">Téléverser un nouveau logo</label>
+                
+                <div className="flex items-center gap-4">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setLogoFile(file);
+                        const reader = new FileReader();
+                        reader.onload = (ev) => setLogoPreview(ev.target?.result as string);
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                    className="hidden"
+                    id="logo-upload"
+                    disabled={uploadingLogo}
+                  />
+                  <label
+                    htmlFor="logo-upload"
+                    className="cursor-pointer inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#D4AF37]/30 hover:bg-[#FDF6E3] text-[#5C4033] transition-colors"
+                  >
+                    <Upload size={18} /> Choisir une image (PNG/JPG, max 4MB)
+                  </label>
+
+                  {logoFile && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!logoFile) return;
+                        setUploadingLogo(true);
+
+                        const formData = new FormData();
+                        formData.append("logo", logoFile);
+
+                        try {
+                          const res = await fetch("/api/upload/logo", {
+                            method: "POST",
+                            body: formData,
+                          });
+                          const data = await res.json();
+
+                          if (res.ok && data.logoUrl) {
+                            setCurrentLogoUrl(data.logoUrl);
+                            setLogoFile(null);
+                            setLogoPreview(null);
+                            alert("✅ Logo mis à jour avec succès ! Il apparaîtra sur les prochains tickets.");
+                            // Refresh session if possible (optional)
+                            window.location.reload();
+                          } else {
+                            alert(data.error || "Erreur lors de l'upload");
+                          }
+                        } catch (err) {
+                          alert("Erreur réseau lors de l'upload");
+                        } finally {
+                          setUploadingLogo(false);
+                        }
+                      }}
+                      disabled={uploadingLogo}
+                      className="px-5 py-2.5 rounded-xl bg-[#B87333] text-white font-medium disabled:opacity-60"
+                    >
+                      {uploadingLogo ? "Envoi en cours..." : "Uploader le logo"}
+                    </button>
+                  )}
+                </div>
+
+                {logoPreview && (
+                  <div className="mt-4">
+                    <p className="text-xs text-[#5C4033]/70 mb-1">Aperçu :</p>
+                    <div className="w-40 h-20 border border-[#D4AF37]/30 rounded-xl overflow-hidden bg-white flex items-center justify-center">
+                      <img src={logoPreview} alt="Aperçu logo" className="max-h-16 max-w-[140px] object-contain" />
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-[#5C4033]/60 mt-3">
+                  Le logo sera stocké via Vercel Blob et utilisé automatiquement sur les tickets thermiques et factures A4.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="text-xs text-[#5C4033]/60 px-1">

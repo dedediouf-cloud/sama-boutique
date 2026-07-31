@@ -18,6 +18,7 @@ import {
   Tag,
   Factory,
   Settings,
+  History,
 } from "lucide-react";
 import { isAdmin } from "@/lib/roles";
 import { Trans } from "@/components/Trans";
@@ -32,6 +33,7 @@ const menuItems = [
   { href: "/reservations", label: "Réservations", icon: Bell },
   { href: "/deliveries", label: "Livraisons", icon: TruckIcon },
   { href: "/reports", label: "Statistiques", icon: BarChart3 },
+  { href: "/cash-history", label: "Historique caisses", icon: History },
   { href: "/promotions", label: "Promotions", icon: Tag },
   { href: "/suppliers", label: "Fournisseurs", icon: Factory },
 ];

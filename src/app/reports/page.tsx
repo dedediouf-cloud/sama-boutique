@@ -13,6 +13,7 @@ import {
   CreditCard,
   Package,
   ChevronDown,
+  History,
 } from "lucide-react";
 import {
   LineChart,
@@ -303,6 +304,43 @@ export default function ReportsPage() {
                   <p>Aucune vente sur cette période</p>
                 </div>
               )}
+            </div>
+
+            {/* === HISTORIQUE DES CAISSES (intégré dans le rapport) === */}
+            <div className="glass rounded-2xl p-6 tilt-card border border-[#D4AF37]/20">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#3D2B1F] flex items-center gap-2">
+                  <History size={20} className="text-[#B87333]" />
+                  Historique des caisses
+                </h2>
+                <a 
+                  href="/cash-history" 
+                  className="text-sm px-4 py-1.5 rounded-xl bg-[#B87333] text-white hover:bg-[#8B5A2B] transition-colors"
+                >
+                  Voir tout l’historique →
+                </a>
+              </div>
+
+              <p className="text-sm text-[#5C4033]/70 mb-4">
+                Suivi des ouvertures/fermetures de caisse, montants, écarts et ventes rattachées.
+                Chaque session est automatiquement liée aux ventes réalisées pendant son ouverture.
+              </p>
+
+              <div className="flex items-center gap-3 text-sm">
+                <div className="px-4 py-2 bg-[#FDF6E3]/60 rounded-xl border border-[#D4AF37]/10">
+                  Ouvrir la caisse avant de vendre
+                </div>
+                <div className="px-4 py-2 bg-[#FDF6E3]/60 rounded-xl border border-[#D4AF37]/10">
+                  Clôturer avec le montant réel compté
+                </div>
+                <div className="px-4 py-2 bg-[#FDF6E3]/60 rounded-xl border border-[#D4AF37]/10">
+                  Écarts calculés automatiquement
+                </div>
+              </div>
+
+              <div className="mt-4 text-xs text-[#5C4033]/60">
+                Les logos personnalisés (via Vercel Blob) apparaissent sur les tickets et factures de chaque boutique.
+              </div>
             </div>
           </>
         )}

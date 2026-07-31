@@ -15,6 +15,7 @@ model User {
   shopName  String
   shopSlug  String   @unique
   phone     String?
+  logoUrl   String?
   isBlocked Boolean  @default(false)
   subscriptionAmount Float    @default(0)
   subscriptionStatus String   @default("pending")
