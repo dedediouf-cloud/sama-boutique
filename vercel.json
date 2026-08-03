@@ -1,0 +1,9 @@
+﻿{
+  "functions": {
+    "src/app/api/upload/logo/route.ts": {
+      "includeFiles": [
+        "node_modules/@vercel/blob/**"
+      ]
+    }
+  }
+}
