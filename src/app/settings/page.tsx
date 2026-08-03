@@ -371,38 +371,55 @@ export default function SettingsPage() {
                             alert("✅ Logo mis à jour avec succès ! Il apparaîtra sur les prochains tickets.");
                             window.location.reload();
                           } else {
-                            // Affichage amélioré + instructions détaillées
+                            // === AFFICHAGE ULTRA-DÉTAILLÉ + TOUT LE CONTENU DE LA RÉPONSE ===
                             let msg = data.error || "Erreur lors de l'upload du logo";
                             
-                            if (data.explanation) msg += "\n\n" + data.explanation;
-                            if (data.important) msg += "\n\n" + data.important;
-                            
-                            // SURFACE THE REAL IMPORT ERROR (name, message, code, stack)
-                            if (data.lastImportError) {
-                              msg += "\n\n🔴 ERREUR D'IMPORT RÉELLE (@vercel/blob):\n";
-                              const err = data.lastImportError;
-                              if (err.name) msg += `Name: ${err.name}\n`;
-                              if (err.message) msg += `Message: ${err.message}\n`;
-                              if (err.code) msg += `Code: ${err.code}\n`;
-                              if (err.stack) msg += `Stack (extrait):\n${err.stack}\n`;
-                              if (!err.name && !err.message) {
-                                msg += JSON.stringify(err, null, 2);
+                            if (data.explanation) msg += "\n\n📌 EXPLICATION :\n" + data.explanation;
+                            if (data.important) msg += "\n\n⚠️ " + data.important;
+
+                            // === ESSAYER TOUTES LES CLÉS POSSIBLES POUR L'ERREUR RÉELLE ===
+                            const importErr = data.lastImportError || data.rawError || data.cause || data.errorDetails || null;
+
+                            if (importErr) {
+                              msg += "\n\n🔴 ERREUR D'IMPORT RÉELLE (@vercel/blob) :";
+                              
+                              if (typeof importErr === 'string') {
+                                msg += "\n" + importErr;
+                              } else {
+                                if (importErr.name)     msg += `\n• Name: ${importErr.name}`;
+                                if (importErr.message)  msg += `\n• Message: ${importErr.message}`;
+                                if (importErr.code)     msg += `\n• Code: ${importErr.code}`;
+                                if (importErr.stack)    msg += `\n• Stack :\n${importErr.stack}`;
+                                
+                                if (importErr.methods) {
+                                  msg += "\n\nMéthodes essayées : " + JSON.stringify(importErr.methods, null, 2);
+                                }
+                                if (!importErr.name && !importErr.message) {
+                                  msg += "\n\nObjet complet :\n" + JSON.stringify(importErr, null, 2);
+                                }
                               }
                             }
-                            
+
+                            // TOUJOURS afficher la réponse brute complète (très utile)
+                            msg += "\n\n📦 RÉPONSE BRUTE COMPLÈTE DU SERVEUR :\n" + JSON.stringify(data, null, 2);
+
                             if (data.whatToDo && Array.isArray(data.whatToDo)) {
-                              msg += "\n\n" + data.whatToDo.join("\n");
-                            }
-                            if (data.howToGetTheRealError && Array.isArray(data.howToGetTheRealError)) {
-                              msg += "\n\n" + data.howToGetTheRealError.join("\n");
-                            }
-                            if (data.recommendedFix) msg += "\n\n" + data.recommendedFix;
-                            if (data.recommended) msg += "\n\n" + data.recommended;
-                            
-                            if (data.action || data.immediateAction) {
-                              msg += "\n\n" + (data.action || data.immediateAction);
+                              msg += "\n\n📋 ACTIONS :\n" + data.whatToDo.join("\n");
                             }
                             
+                            if (data.recommended || data.recommendedFix) {
+                              msg += "\n\n✅ " + (data.recommended || data.recommendedFix);
+                            }
+
+                            msg += "\n\n────────────────────────────────────────";
+                            msg += "\n🔥 ÉTAPE CRITIQUE :";
+                            msg += "\n1. Va sur Vercel → Deployments";
+                            msg += "\n2. Clique sur le dernier déploiement";
+                            msg += "\n3. Ouvre **Function Logs** (PAS Build Logs)";
+                            msg += "\n4. Réessaie d'uploader un logo";
+                            msg += "\n5. Copie **l'erreur complète** qui apparaît dans les logs";
+                            msg += "\n6. Colle TOUT ici (c'est la seule façon de voir la vraie cause)";
+
                             alert(msg);
                           }
                         } catch (err) {

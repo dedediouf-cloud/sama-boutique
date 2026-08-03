@@ -11,72 +11,84 @@ import { prisma } from "@/lib/prisma";
 
 // Robust loader for @vercel/blob
 // Tries multiple strategies because of Turbopack + Vercel runtime differences
+// NOTE: We now try dynamic import FIRST because @vercel/blob is ESM-only in recent versions
+// and `require()` often throws ERR_REQUIRE_ESM on Vercel serverless.
 let cachedPutFn: any = null;
 
-async function getBlobPut() {
-  if (cachedPutFn) return cachedPutFn;
-
-  const errors: any[] = [];
-
-  // Strategy 1: require (most reliable on Vercel serverless functions)
-  try {
-    // @ts-ignore
-    const blob = require("@vercel/blob");
-    if (typeof blob.put === "function") {
-      cachedPutFn = blob.put;
-      console.log("[upload/logo] ✅ Loaded via require (named)");
-      return cachedPutFn;
-    }
-    if (blob.default && typeof blob.default.put === "function") {
-      cachedPutFn = blob.default.put;
-      console.log("[upload/logo] ✅ Loaded via require (default)");
-      return cachedPutFn;
-    }
-    errors.push({ method: "require", error: "put function not found after require" });
-  } catch (e: any) {
-    const errInfo = { 
-      name: e?.name || "Error", 
-      message: e?.message || String(e), 
-      code: e?.code, 
-      stack: e?.stack ? e.stack.substring(0, 1500) : undefined 
-    };
-    errors.push({ method: "require", error: errInfo.message, code: errInfo.code, stack: errInfo.stack });
-    (globalThis as any).__lastBlobError = errInfo;
+// We will return both the put function (if successful) AND the last error object
+async function getBlobPut(): Promise<{ putFn: any; error: any }> {
+  if (cachedPutFn) {
+    return { putFn: cachedPutFn, error: null };
   }
 
-  // Strategy 2: dynamic import (fallback)
+  const errors: any[] = [];
+  let lastError: any = null;
+
+  // Strategy 1: Dynamic import FIRST (ESM-only package)
   try {
     // @ts-ignore
     const mod = await import("@vercel/blob");
     if (typeof mod.put === "function") {
       cachedPutFn = mod.put;
       console.log("[upload/logo] ✅ Loaded via dynamic import (named)");
-      return cachedPutFn;
+      return { putFn: cachedPutFn, error: null };
     }
     if (mod.default && typeof mod.default.put === "function") {
       cachedPutFn = mod.default.put;
       console.log("[upload/logo] ✅ Loaded via dynamic import (default)");
-      return cachedPutFn;
+      return { putFn: cachedPutFn, error: null };
     }
-    errors.push({ method: "dynamic-import", error: "put function not found" });
+    errors.push({ method: "dynamic-import", message: "put function not found" });
   } catch (e: any) {
-    const errInfo = { 
-      name: e?.name || "Error", 
-      message: e?.message || String(e), 
-      code: e?.code, 
-      stack: e?.stack ? e.stack.substring(0, 1500) : undefined 
+    lastError = {
+      name: e?.name || "DynamicImportError",
+      message: e?.message || String(e),
+      code: e?.code,
+      stack: e?.stack?.substring(0, 2200)
     };
-    errors.push({ method: "dynamic-import", error: errInfo.message, code: errInfo.code, stack: errInfo.stack });
-    (globalThis as any).__lastBlobError = errInfo;
+    errors.push({ method: "dynamic-import", ...lastError });
+    console.error("[upload/logo] ❌ Dynamic import failed:", lastError);
   }
 
-  console.error("[upload/logo] ❌ All loading strategies for @vercel/blob failed", errors);
-  (globalThis as any).__lastBlobError = { 
+  // Strategy 2: require (often fails with ERR_REQUIRE_ESM)
+  try {
+    // @ts-ignore
+    const blob = require("@vercel/blob");
+    if (typeof blob.put === "function") {
+      cachedPutFn = blob.put;
+      console.log("[upload/logo] ✅ Loaded via require (named)");
+      return { putFn: cachedPutFn, error: null };
+    }
+    if (blob.default && typeof blob.default.put === "function") {
+      cachedPutFn = blob.default.put;
+      console.log("[upload/logo] ✅ Loaded via require (default)");
+      return { putFn: cachedPutFn, error: null };
+    }
+    errors.push({ method: "require", message: "put function not found" });
+  } catch (e: any) {
+    lastError = {
+      name: e?.name || "RequireError",
+      message: e?.message || String(e),
+      code: e?.code,
+      stack: e?.stack?.substring(0, 2200)
+    };
+    errors.push({ method: "require", ...lastError });
+    console.error("[upload/logo] ❌ Require failed:", lastError);
+  }
+
+  const fullError = {
+    name: lastError?.name || "BlobModuleLoadError",
+    message: lastError?.message || "Failed to load @vercel/blob",
+    code: lastError?.code,
+    stack: lastError?.stack,
     methods: errors,
-    message: "All strategies failed to load @vercel/blob",
-    possibleCause: "Package may be ESM-only (ERR_REQUIRE_ESM), bundling issue, build cache, or missing from serverless bundle. Check Function Logs for exact error."
+    possibleCause: lastError?.code === "ERR_REQUIRE_ESM" 
+      ? "ERR_REQUIRE_ESM: @vercel/blob is ESM-only. Dynamic import should have worked but failed in serverless bundle."
+      : "Build cache / Turbopack / missing module in serverless function."
   };
-  return null;
+
+  console.error("[upload/logo] ❌❌ ALL STRATEGIES FAILED:", fullError);
+  return { putFn: null, error: fullError };
 }
 
 export async function POST(request: NextRequest) {
@@ -103,14 +115,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Image trop volumineuse (max 4MB)" }, { status: 400 });
     }
 
-    const put = await getBlobPut();
+    const result = await getBlobPut();
+    const put = result.putFn;
+    const loadError = result.error;
 
     if (!put) {
       const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN;
-      const lastError = (globalThis as any).__lastBlobError;
+      const lastError = loadError || (globalThis as any).__lastBlobError || {};
 
-      console.error("[upload/logo] getBlobPut() returned null. hasToken:", hasToken, "lastError:", lastError);
-      console.error("[upload/logo] FULL IMPORT ERROR DETAILS:", JSON.stringify(lastError, null, 2));
+      console.error("[upload/logo] getBlobPut() returned no putFn. hasToken:", hasToken);
+      console.error("[upload/logo] LOAD ERROR OBJECT:", JSON.stringify(lastError, null, 2));
+      if (lastError.stack) {
+        console.error("[upload/logo] STACK:", lastError.stack);
+      }
 
       if (hasToken) {
         // Token is present but loading @vercel/blob failed at runtime
@@ -118,7 +135,8 @@ export async function POST(request: NextRequest) {
           {
             error: "Erreur technique avec Vercel Blob (le token est présent mais le module n'a pas pu s'initialiser).",
             tokenPresent: true,
-            lastImportError: lastError || null,
+            lastImportError: lastError,
+            rawError: lastError,
             explanation: "Le token BLOB_READ_WRITE_TOKEN est bien lu par le serveur, mais `require('@vercel/blob')` ou `import('@vercel/blob')` a échoué au runtime (dans la fonction serverless).",
             thisIsNotATokenProblem: true,
             important: "Ceci est une erreur de chargement / bundling du package `@vercel/blob` au runtime, PAS du token.",
@@ -128,17 +146,18 @@ export async function POST(request: NextRequest) {
               "3. Ouvre **Function Logs** (PAS Build Logs)",
               "4. Réessaie d'uploader un logo",
               "5. Cherche l'erreur pour `/api/upload/logo`",
-              "6. Copie **TOUT** : le nom de l'erreur (name), le message, le code, et la stack complète",
-              "7. Colle-la ici (ou dans la réponse)"
+              "6. Copie **TOUT** l'erreur (name, message, code, stack)",
+              "7. Colle-la ici"
             ],
             howToGetTheRealError: [
-              "Ouvre les **Function Logs** sur Vercel pour voir le vrai message d'erreur d'import (require ou dynamic import)."
+              "Ouvre les **Function Logs** sur Vercel (pas les Build Logs) pour voir le vrai message d'erreur."
             ],
-            recommended: "Redeploy avec 'Clear build cache' (ça résout souvent ce genre de problème de module / cache)",
-            recommendedFix: "Après avoir copié l'erreur exacte des Function Logs, envoie-la pour analyse.",
+            recommended: "Redeploy avec 'Clear build cache'",
+            recommendedFix: "Copie l'erreur complète des Function Logs et colle-la ici.",
             debugInfo: {
               hasToken: hasToken,
-              errorCapturedAt: new Date().toISOString()
+              errorCapturedAt: new Date().toISOString(),
+              methodsTried: lastError.methods || ["dynamic-import", "require"]
             }
           },
           { status: 500 }
