@@ -371,13 +371,36 @@ export default function SettingsPage() {
                             alert("✅ Logo mis à jour avec succès ! Il apparaîtra sur les prochains tickets.");
                             window.location.reload();
                           } else {
-                            // Affichage amélioré des instructions Vercel Blob
+                            // Affichage amélioré + instructions détaillées
                             let msg = data.error || "Erreur lors de l'upload du logo";
                             
-                            if (data.steps && Array.isArray(data.steps)) {
-                              msg += "\n\n" + data.steps.join("\n");
-                            } else if (data.help) {
-                              msg += "\n\n" + data.help;
+                            if (data.explanation) msg += "\n\n" + data.explanation;
+                            if (data.important) msg += "\n\n" + data.important;
+                            
+                            // SURFACE THE REAL IMPORT ERROR (name, message, code, stack)
+                            if (data.lastImportError) {
+                              msg += "\n\n🔴 ERREUR D'IMPORT RÉELLE (@vercel/blob):\n";
+                              const err = data.lastImportError;
+                              if (err.name) msg += `Name: ${err.name}\n`;
+                              if (err.message) msg += `Message: ${err.message}\n`;
+                              if (err.code) msg += `Code: ${err.code}\n`;
+                              if (err.stack) msg += `Stack (extrait):\n${err.stack}\n`;
+                              if (!err.name && !err.message) {
+                                msg += JSON.stringify(err, null, 2);
+                              }
+                            }
+                            
+                            if (data.whatToDo && Array.isArray(data.whatToDo)) {
+                              msg += "\n\n" + data.whatToDo.join("\n");
+                            }
+                            if (data.howToGetTheRealError && Array.isArray(data.howToGetTheRealError)) {
+                              msg += "\n\n" + data.howToGetTheRealError.join("\n");
+                            }
+                            if (data.recommendedFix) msg += "\n\n" + data.recommendedFix;
+                            if (data.recommended) msg += "\n\n" + data.recommended;
+                            
+                            if (data.action || data.immediateAction) {
+                              msg += "\n\n" + (data.action || data.immediateAction);
                             }
                             
                             alert(msg);
