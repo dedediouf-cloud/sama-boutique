@@ -369,10 +369,18 @@ export default function SettingsPage() {
                             setLogoFile(null);
                             setLogoPreview(null);
                             alert("✅ Logo mis à jour avec succès ! Il apparaîtra sur les prochains tickets.");
-                            // Refresh session if possible (optional)
                             window.location.reload();
                           } else {
-                            alert(data.error || "Erreur lors de l'upload");
+                            // Affichage amélioré des instructions Vercel Blob
+                            let msg = data.error || "Erreur lors de l'upload du logo";
+                            
+                            if (data.steps && Array.isArray(data.steps)) {
+                              msg += "\n\n" + data.steps.join("\n");
+                            } else if (data.help) {
+                              msg += "\n\n" + data.help;
+                            }
+                            
+                            alert(msg);
                           }
                         } catch (err) {
                           alert("Erreur réseau lors de l'upload");

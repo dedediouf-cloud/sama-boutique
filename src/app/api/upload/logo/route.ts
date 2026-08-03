@@ -46,10 +46,28 @@ export async function POST(request: NextRequest) {
     const put = await getBlobPut();
 
     if (!put) {
+      const hasToken = !!process.env.BLOB_READ_WRITE_TOKEN;
+      
       return NextResponse.json(
         {
-          error:
-            "Vercel Blob n'est pas disponible. Ajoute BLOB_READ_WRITE_TOKEN dans les Environment Variables (Storage → Blob).",
+          error: hasToken 
+            ? "Erreur technique avec Vercel Blob (le token est présent mais le module n'a pas pu s'initialiser)."
+            : "Vercel Blob n'est pas activé.",
+          help: "Pour activer l'upload de logo :",
+          steps: [
+            "1. Ouvre ton projet sur Vercel",
+            "2. Va dans l'onglet **Storage** (dans la barre latérale)",
+            "3. Clique sur **Create Database** → **Blob**",
+            "4. Crée le store (nom par défaut = OK)",
+            "5. Copie la valeur de `BLOB_READ_WRITE_TOKEN`",
+            "6. Va dans **Settings → Environment Variables**",
+            "7. Ajoute la variable :",
+            "   • Name = BLOB_READ_WRITE_TOKEN",
+            "   • Value = colle le token",
+            "   • Environments = Production + Preview",
+            "8. Clique sur **Redeploy** et coche **Clear build cache**"
+          ],
+          tokenPresent: hasToken
         },
         { status: 500 }
       );
