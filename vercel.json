@@ -1,9 +1,1 @@
-﻿{
-  "functions": {
-    "src/app/api/**": {
-      "includeFiles": [
-        "node_modules/@vercel/blob/**"
-      ]
-    }
-  }
-}
+﻿{"functions":{"src/app/api/**":{"includeFiles":["node_modules/@vercel/blob/**"]}}}
