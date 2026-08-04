@@ -11,13 +11,14 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "vercel-build": "npx prisma generate --schema=prisma/schema.prod.prisma && npx prisma db push --schema=prisma/schema.prod.prisma && next build"
+    "vercel-build": "npx prisma generate --schema=prisma/schema.prod.prisma && npx prisma db push --schema=prisma/schema.prod.prisma --accept-data-loss && next build"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",
     "@prisma/client": "^6.19.3",
     "@react-pdf/renderer": "^4.5.1",
     "@tanstack/react-query": "^5.101.0",
+    "@vercel/blob": "^2.6.1",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "jspdf": "^4.2.1",
