@@ -45,7 +45,24 @@ const paymentStatusLabels: Record<string, { label: string; color: string }> = {
 const productIcons = ["✨", "🎁", "💎", "🛍️", "🌟", "🏺", "🕯️", "🧴", "👜", "🧣"];
 
 export default function SalesPage() {
-  const { data: session } = useSession();
+  const { data: session, status, update } = useSession();
+
+  // === LECTURE ROBUSTE DU LOGO (base64) ===
+  // Toujours lire la version la plus récente possible du logo (même après upload dans /settings)
+  const getCurrentLogo = (): string | null => {
+    const u = (session?.user as any) || {};
+    return u.logoUrl || null;
+  };
+
+  // Force refresh de la session au chargement (pour récupérer le logo fraîchement uploadé)
+  useEffect(() => {
+    if (status === "authenticated") {
+      update().catch(() => {});
+    }
+  }, [status, update]);
+
+  // (plus de shopLogo au niveau module pour éviter les closures obsolètes)
+  // Toujours lire via getCurrentLogo() ou override passé aux generateurs
   const [products, setProducts] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
@@ -272,11 +289,16 @@ export default function SalesPage() {
       fetchSales();
 
       // ✅ Impression DIRECTE du ticket (boîte d'impression s'ouvre automatiquement)
-      setTimeout(() => {
+      // Force refresh session + delay pour avoir le logo le plus frais possible
+      setTimeout(async () => {
         if (data) {
+          try {
+            await update();
+            await new Promise(r => setTimeout(r, 600));
+          } catch {}
           printTicket(data);
         }
-      }, 30);
+      }, 50);
 
     } catch (err: any) {
       // console.error("Erreur validation vente:", err);
@@ -287,17 +309,31 @@ export default function SalesPage() {
   };
 
   // === TICKET THERMIQUE 80mm (pour impression directe) ===
-  const generateTicketPDF = (sale: any, autoPrint: boolean = false) => {
+  const generateTicketPDF = (sale: any, autoPrint: boolean = false, overrideLogo: string | null = null) => {
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",
       format: [80, 300],
     });
 
-    const shopName = session?.user?.shopName || "Ma Boutique";
-    const shopPhone = session?.user?.phone || "";
-    const user = session?.user as ExtendedUser | undefined;
-    const shopLogo = user?.logoUrl || null;   // Vercel Blob logo (typed)
+    // === Toujours relire le logo LE PLUS RÉCENT au moment exact de la génération ===
+    // Priorité: override passé depuis le wrapper (après await update()), puis session courante, puis getCurrentLogo
+    const latestUser = (session?.user as any) || {};
+    const logoFromSession = latestUser.logoUrl || getCurrentLogo() || null;
+    const logo = overrideLogo || logoFromSession || null;
+
+    // DIAGNOSTIC LOG (temporaire pour debug logo sur ticket)
+    console.log('[LOGO DEBUG - TICKET] at exact generation time:', {
+      hasOverride: !!overrideLogo,
+      hasFromSession: !!logoFromSession,
+      logoPrefix: logo ? logo.substring(0, 40) : null,
+      logoLength: logo ? logo.length : 0,
+      startsWithData: logo ? logo.startsWith('data:') : false,
+      sessionUserLogo: (session?.user as any)?.logoUrl ? 'present' : 'absent'
+    });
+
+    const shopName = latestUser.shopName || session?.user?.shopName || "Ma Boutique";
+    const shopPhone = latestUser.phone || session?.user?.phone || "";
     const saleDate = new Date(sale.createdAt);
     const dateStr = saleDate.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" });
     const timeStr = saleDate.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -312,16 +348,15 @@ export default function SalesPage() {
       doc.line(4, yy, 76, yy);
     };
 
-    // Header (80mm) - uses per-shop logo from Vercel Blob
+    // Header (80mm) - logo is base64 (data:image/...;base64,...)
     let logoAdded = false;
-    if (shopLogo) {
+    if (logo && typeof logo === 'string' && logo.startsWith('data:')) {
       try {
-        // Note: addImage works with external URLs in jsPDF (Vercel Blob is public)
-        doc.addImage(shopLogo, "PNG", 29, y, 22, 22);
+        doc.addImage(logo, "PNG", 29, y, 22, 22);
         logoAdded = true;
         y += 25;
       } catch (e) {
-        // fallback to initials
+        console.warn("Logo addImage failed on ticket:", e);
       }
     }
 
@@ -444,17 +479,31 @@ export default function SalesPage() {
   };
 
   // === FACTURE A4 (pour le bouton PDF dans l'historique) ===
-  const generateA4PDF = (sale: any) => {
+  const generateA4PDF = (sale: any, overrideLogo: string | null = null) => {
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",
       format: "a4",
     });
 
-    const shopName = session?.user?.shopName || "Ma Boutique";
-    const shopPhone = session?.user?.phone || "";
-    const user = session?.user as ExtendedUser | undefined;
-    const shopLogo = user?.logoUrl || null;  // Vercel Blob (typed)
+    // === Toujours relire le logo LE PLUS RÉCENT au moment exact de la génération ===
+    // Priorité: override (passé depuis wrapper après await update), puis session, puis getCurrentLogo
+    const currentUser = session?.user as ExtendedUser | undefined;
+    const logoFromSession = getCurrentLogo() || currentUser?.logoUrl || null;
+    const logo = overrideLogo || logoFromSession || null;
+
+    // DIAGNOSTIC LOG (temporaire pour debug logo sur facture A4)
+    console.log('[LOGO DEBUG - A4] at exact generation time:', {
+      hasOverride: !!overrideLogo,
+      hasFromSession: !!logoFromSession,
+      logoPrefix: logo ? logo.substring(0, 40) : null,
+      logoLength: logo ? logo.length : 0,
+      startsWithData: logo ? logo.startsWith('data:') : false,
+      sessionUserLogo: (session?.user as any)?.logoUrl ? 'present' : 'absent'
+    });
+
+    const shopName = currentUser?.shopName || session?.user?.shopName || "Ma Boutique";
+    const shopPhone = currentUser?.phone || session?.user?.phone || "";
     const saleDate = new Date(sale.createdAt);
     const fullDate = saleDate.toLocaleDateString("fr-FR", {
       weekday: "long",
@@ -468,12 +517,14 @@ export default function SalesPage() {
 
     let y = 15;
 
-    // Header with per-shop logo (Vercel Blob)
-    if (shopLogo) {
+    // Header with per-shop logo (base64 data URL)
+    if (logo && typeof logo === 'string' && logo.startsWith('data:')) {
       try {
-        doc.addImage(shopLogo, "PNG", 75, y - 5, 60, 25);
+        doc.addImage(logo, "PNG", 75, y - 5, 60, 25);
         y += 28;
-      } catch (e) {}
+      } catch (e) {
+        console.warn("Logo addImage failed on A4 invoice:", e);
+      }
     }
 
     doc.setFontSize(22);
@@ -586,12 +637,48 @@ export default function SalesPage() {
     doc.save(fileName);
   };
 
-  // === FONCTIONS PUBLIQUES ===
+  // === FONCTIONS PUBLIQUES (force refresh + relecture du logo le plus récent) ===
   // 📥 PDF = Format A4 (facture)
-  const downloadTicket = (sale: any) => generateA4PDF(sale);
+  const downloadTicket = async (sale: any) => {
+    let freshLogo: string | null = null;
+    try {
+      // IMPORTANT: utiliser la VALEUR RETOURNÉE par update() pour éviter les closures obsolètes
+      const newSess = await update(); // Force refresh de la session pour avoir le logo le plus récent
+      await new Promise(r => setTimeout(r, 800));
+      // Relire le logo LE PLUS frais possible depuis la nouvelle session retournée
+      const u = (newSess?.user as any) || (session?.user as any) || {};
+      freshLogo = u.logoUrl || getCurrentLogo() || null;
+
+      // Log supplémentaire pour debug
+      console.log('[LOGO DEBUG - downloadTicket wrapper] après update+delay:', {
+        freshLogoPrefix: freshLogo ? freshLogo.substring(0, 50) : null,
+        length: freshLogo ? freshLogo.length : 0,
+        startsWithData: freshLogo ? freshLogo.startsWith('data:') : false
+      });
+    } catch (e) {}
+    generateA4PDF(sale, freshLogo);
+  };
 
   // 🖨️ Imprimer + validation = Format 80mm thermal
-  const printTicket = (sale: any) => generateTicketPDF(sale, true);
+  const printTicket = async (sale: any) => {
+    let freshLogo: string | null = null;
+    try {
+      // IMPORTANT: utiliser la VALEUR RETOURNÉE par update() pour éviter les closures obsolètes
+      const newSess = await update(); // Force refresh de la session pour avoir le logo le plus récent
+      await new Promise(r => setTimeout(r, 800));
+      // Relire le logo LE PLUS frais possible depuis la nouvelle session retournée
+      const u = (newSess?.user as any) || (session?.user as any) || {};
+      freshLogo = u.logoUrl || getCurrentLogo() || null;
+      
+      // Log supplémentaire pour debug
+      console.log('[LOGO DEBUG - printTicket wrapper] après update+delay:', {
+        freshLogoPrefix: freshLogo ? freshLogo.substring(0, 50) : null,
+        length: freshLogo ? freshLogo.length : 0,
+        startsWithData: freshLogo ? freshLogo.startsWith('data:') : false
+      });
+    } catch (e) {}
+    generateTicketPDF(sale, true, freshLogo);
+  };
 
   // Alias pour compatibilité
   const generateInvoice = downloadTicket;

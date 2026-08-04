@@ -108,7 +108,7 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async session({ session, token }) {
+    async session({ session, token, trigger, newSession }) {
       if (token && session.user) {
         session.user.id = token.sub as string;
         session.user.shopName = token.shopName as string;
@@ -118,9 +118,15 @@ export const authOptions: NextAuthOptions = {
         session.user.role = token.role as string;
         session.user.ownerId = token.ownerId as string;
       }
+
+      // Support for manual session update (e.g. after logo upload)
+      if (trigger === "update" && newSession?.user?.logoUrl) {
+        session.user.logoUrl = newSession.user.logoUrl;
+      }
+
       return session;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.shopName = user.shopName;
         token.shopSlug = user.shopSlug;
@@ -129,6 +135,12 @@ export const authOptions: NextAuthOptions = {
         token.role = user.role;
         token.ownerId = user.ownerId;
       }
+
+      // Allow updating logoUrl dynamically without full re-login
+      if (trigger === "update" && session?.user?.logoUrl) {
+        token.logoUrl = session.user.logoUrl;
+      }
+
       return token;
     },
   },

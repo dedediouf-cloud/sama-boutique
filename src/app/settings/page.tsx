@@ -29,7 +29,7 @@ interface PaymentSettings {
 }
 
 export default function SettingsPage() {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const [settings, setSettings] = useState<PaymentSettings>({
     paymentsEnabled: false,
     defaultPaymentMethod: "cash",
@@ -368,8 +368,22 @@ export default function SettingsPage() {
                             setCurrentLogoUrl(data.logoUrl);
                             setLogoFile(null);
                             setLogoPreview(null);
-                            alert("✅ Logo mis à jour avec succès ! Il apparaîtra sur les prochains tickets.");
-                            window.location.reload();
+
+                            // Force refresh de la session NextAuth (très important pour que le logo apparaisse immédiatement sur les factures)
+                            try {
+                              await update();
+                              // Attendre un peu que le token JWT soit mis à jour côté client
+                              await new Promise(r => setTimeout(r, 800));
+                            } catch (e) {
+                              console.warn("Session update warning:", e);
+                            }
+
+                            alert("✅ Logo mis à jour avec succès ! Il apparaîtra sur les prochains tickets et factures.\n\n→ Rafraîchis la page (F5) sur la page Ventes/Caisse pour voir le logo sur les factures.");
+                            
+                            // Recharge complète pour être sûr que tout est à jour
+                            setTimeout(() => {
+                              window.location.reload();
+                            }, 900);
                           } else {
                             // === AFFICHAGE DÉTAILLÉ DE L'ERREUR (amélioré pour v2026-08-04-base64-raw) ===
                             let msg = data.error || "Erreur lors de l'upload du logo";
