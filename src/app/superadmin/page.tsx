@@ -874,10 +874,23 @@ export default function SuperAdminDashboard() {
                                       alert("✅ Logo mis à jour pour cette boutique !");
                                       fetchBoutiques();
                                     } else {
-                                      // Afficher les détails réels de l'erreur
-                                      const errorMsg = data.details 
-                                        ? `${data.error} — ${data.details}` 
-                                        : (data.error || "Impossible d'uploader le logo");
+                                      // === AFFICHAGE DÉTAILLÉ (cohérent avec settings + v2026-08-04-base64-raw) ===
+                                      let errorMsg = data.error || "Impossible d'uploader le logo";
+                                      if (data.details) errorMsg += "\n\nDétails : " + data.details;
+                                      if (data.code) errorMsg += "\nCode : " + data.code;
+                                      if (data.ownerId || data.ownerIdAttempted) errorMsg += "\nOwnerId : " + (data.ownerId || data.ownerIdAttempted);
+                                      if (data.strategiesTried) errorMsg += "\nStratégies essayées : " + JSON.stringify(data.strategiesTried);
+                                      if (data.method) errorMsg += "\nMéthode : " + data.method;
+                                      if (data.version) errorMsg += "\nVersion : " + data.version;
+                                      if (data.verified !== undefined) errorMsg += "\nVérifié en DB : " + data.verified;
+
+                                      errorMsg += "\n\n📦 Réponse complète :\n" + JSON.stringify(data, null, 2);
+                                      
+                                      errorMsg += "\n\n────────────────────────────────────────";
+                                      errorMsg += "\n📋 COPIE CE MESSAGE COMPLET et colle-le ici pour le diagnostic.";
+                                      errorMsg += "\n\n🔎 Vérifie Function Logs sur Vercel (pas Build Logs).";
+                                      errorMsg += "\nSi tu vois encore 'prisma.user.update()', c'est l'ANCIEN code : redeploy avec 'Clear build cache'.";
+
                                       alert("Erreur : " + errorMsg);
                                       console.error("Logo upload failed (superadmin):", data);
                                     }

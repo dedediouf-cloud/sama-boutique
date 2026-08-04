@@ -340,11 +340,11 @@ export default function SettingsPage() {
                     id="logo-upload"
                     disabled={uploadingLogo}
                   />
-                  <label
+                    <label
                     htmlFor="logo-upload"
                     className="cursor-pointer inline-flex items-center gap-2 px-5 py-2.5 rounded-xl border border-[#D4AF37]/30 hover:bg-[#FDF6E3] text-[#5C4033] transition-colors"
                   >
-                    <Upload size={18} /> Choisir une image (PNG/JPG, max 4MB)
+                    <Upload size={18} /> Choisir une image (PNG/JPG, max 300KB)
                   </label>
 
                   {logoFile && (
@@ -371,7 +371,7 @@ export default function SettingsPage() {
                             alert("✅ Logo mis à jour avec succès ! Il apparaîtra sur les prochains tickets.");
                             window.location.reload();
                           } else {
-                            // === AFFICHAGE DÉTAILLÉ DE L'ERREUR (amélioré) ===
+                            // === AFFICHAGE DÉTAILLÉ DE L'ERREUR (amélioré pour v2026-08-04-base64-raw) ===
                             let msg = data.error || "Erreur lors de l'upload du logo";
                             
                             if (data.details) {
@@ -380,18 +380,37 @@ export default function SettingsPage() {
                             if (data.code) {
                               msg += "\nCode : " + data.code;
                             }
-                            if (data.ownerIdAttempted) {
-                              msg += "\nOwnerId : " + data.ownerIdAttempted;
+                            if (data.ownerIdAttempted || data.ownerId) {
+                              msg += "\nOwnerId : " + (data.ownerIdAttempted || data.ownerId);
                             }
                             if (data.name) {
                               msg += "\nNom erreur : " + data.name;
+                            }
+                            if (data.strategiesTried) {
+                              msg += "\nStratégies essayées : " + JSON.stringify(data.strategiesTried);
                             }
 
                             // Toujours afficher la réponse brute complète
                             msg += "\n\n📦 RÉPONSE COMPLÈTE DU SERVEUR :\n" + JSON.stringify(data, null, 2);
 
+                            if (data.method) {
+                              msg += "\n\n✅ Méthode utilisée : " + data.method;
+                            }
+                            if (data.version) {
+                              msg += "\nVersion code déployée : " + data.version;
+                            }
+                            if (data.verified !== undefined) {
+                              msg += "\nVérifié en DB : " + data.verified;
+                            }
+
                             msg += "\n\n────────────────────────────────────────";
                             msg += "\n📋 COPIE TOUT CE TEXTE et colle-le ici (très important pour diagnostiquer).";
+                            msg += "\n\n🔎 PROCHAINES ÉTAPES :\n";
+                            msg += "1. Va sur Vercel → ton projet → Deployments → le dernier déploiement\n";
+                            msg += "2. Clique sur 'Function Logs' (PAS Build Logs)\n";
+                            msg += "3. Filtre par /api/upload/logo\n";
+                            msg += "4. Reproduis l'erreur et copie les logs exacts\n";
+                            msg += "5. Si tu vois encore 'prisma.user.update', l'ancien code tourne : REDEPLOY avec 'Clear build cache' !";
 
                             alert(msg);
                             console.error("Upload logo error (full response):", data);
