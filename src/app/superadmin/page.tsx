@@ -850,6 +850,43 @@ export default function SuperAdminDashboard() {
                               <ExternalLink size={14} />
                               Catalogue
                             </a>
+
+                            {/* === UPLOAD LOGO POUR SUPER ADMIN === */}
+                            <label className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#D4AF37]/10 text-[#B87333] hover:bg-[#D4AF37]/20 text-xs font-medium cursor-pointer transition-colors">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  const formData = new FormData();
+                                  formData.append("logo", file);
+                                  formData.append("targetUserId", boutique.id);
+
+                                  try {
+                                    const res = await fetch("/api/upload/logo", {
+                                      method: "POST",
+                                      body: formData,
+                                    });
+                                    const data = await res.json();
+                                    if (res.ok) {
+                                      alert("✅ Logo mis à jour pour cette boutique !");
+                                      // Optionnel : recharger la liste
+                                      fetchBoutiques();
+                                    } else {
+                                      alert("Erreur : " + (data.error || "Impossible d'uploader le logo"));
+                                    }
+                                  } catch (err) {
+                                    alert("Erreur réseau lors de l'upload du logo");
+                                  }
+                                  // reset input
+                                  e.target.value = "";
+                                }}
+                              />
+                              <span>📷 Logo</span>
+                            </label>
+
                             <button
                               onClick={() => deleteBoutique(boutique.id, boutique.shopName)}
                               className="inline-flex items-center gap-1 text-red-500 hover:text-red-600 font-medium transition-colors"
