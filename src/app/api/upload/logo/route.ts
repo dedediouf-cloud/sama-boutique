@@ -126,6 +126,8 @@ export async function POST(request: NextRequest) {
       console.error("Code:", lastUpdateError?.code);
       console.error("Meta:", lastUpdateError?.meta);
 
+      const isMissingColumn = lastUpdateError?.message?.includes('logoUrl') || lastUpdateError?.message?.includes('does not exist');
+
       return NextResponse.json({
         error: "Erreur lors de la sauvegarde en base de données",
         details: lastUpdateError?.message || String(lastUpdateError),
@@ -135,8 +137,13 @@ export async function POST(request: NextRequest) {
         method: LOGO_UPLOAD_METHOD,
         version: LOGO_UPLOAD_VERSION,
         strategiesTried: ["$executeRaw", "$executeRawUnsafe"],
-        hint: "AUCUN appel à 'prisma.user.update()' n'existe dans ce code. Si tu vois encore cette erreur, c'est que l'ANCIEN code tourne sur Vercel (build cache).",
-        solution: "1) Redeploy avec 'Clear build cache' (obligatoire)  2) Vérifie Function Logs sur Vercel  3) Attends 60-90s après le déploiement",
+        isMissingColumn: !!isMissingColumn,
+        hint: isMissingColumn 
+          ? "La colonne 'logoUrl' n'existe pas encore dans ta base de données PostgreSQL en production."
+          : "AUCUN appel à 'prisma.user.update()' n'existe dans ce code.",
+        solution: isMissingColumn 
+          ? "Tu dois pousser la migration ou utiliser le build script vercel-build (voir QUICK_FIX_LOGO_COLUMN.md)"
+          : "1) Redeploy avec 'Clear build cache' (obligatoire)  2) Vérifie Function Logs sur Vercel",
         rawError: lastUpdateError ? { message: lastUpdateError.message, code: lastUpdateError.code, name: lastUpdateError.name } : null
       }, { status: 500 });
     }
