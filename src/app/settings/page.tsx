@@ -371,56 +371,30 @@ export default function SettingsPage() {
                             alert("✅ Logo mis à jour avec succès ! Il apparaîtra sur les prochains tickets.");
                             window.location.reload();
                           } else {
-                            // === AFFICHAGE ULTRA-DÉTAILLÉ + TOUT LE CONTENU DE LA RÉPONSE ===
+                            // === AFFICHAGE DÉTAILLÉ DE L'ERREUR (amélioré) ===
                             let msg = data.error || "Erreur lors de l'upload du logo";
                             
-                            if (data.explanation) msg += "\n\n📌 EXPLICATION :\n" + data.explanation;
-                            if (data.important) msg += "\n\n⚠️ " + data.important;
-
-                            // === ESSAYER TOUTES LES CLÉS POSSIBLES POUR L'ERREUR RÉELLE ===
-                            const importErr = data.lastImportError || data.rawError || data.cause || data.errorDetails || null;
-
-                            if (importErr) {
-                              msg += "\n\n🔴 ERREUR D'IMPORT RÉELLE (@vercel/blob) :";
-                              
-                              if (typeof importErr === 'string') {
-                                msg += "\n" + importErr;
-                              } else {
-                                if (importErr.name)     msg += `\n• Name: ${importErr.name}`;
-                                if (importErr.message)  msg += `\n• Message: ${importErr.message}`;
-                                if (importErr.code)     msg += `\n• Code: ${importErr.code}`;
-                                if (importErr.stack)    msg += `\n• Stack :\n${importErr.stack}`;
-                                
-                                if (importErr.methods) {
-                                  msg += "\n\nMéthodes essayées : " + JSON.stringify(importErr.methods, null, 2);
-                                }
-                                if (!importErr.name && !importErr.message) {
-                                  msg += "\n\nObjet complet :\n" + JSON.stringify(importErr, null, 2);
-                                }
-                              }
+                            if (data.details) {
+                              msg += "\n\n🔴 Détails techniques :\n" + data.details;
+                            }
+                            if (data.code) {
+                              msg += "\nCode : " + data.code;
+                            }
+                            if (data.ownerIdAttempted) {
+                              msg += "\nOwnerId : " + data.ownerIdAttempted;
+                            }
+                            if (data.name) {
+                              msg += "\nNom erreur : " + data.name;
                             }
 
-                            // TOUJOURS afficher la réponse brute complète (très utile)
-                            msg += "\n\n📦 RÉPONSE BRUTE COMPLÈTE DU SERVEUR :\n" + JSON.stringify(data, null, 2);
-
-                            if (data.whatToDo && Array.isArray(data.whatToDo)) {
-                              msg += "\n\n📋 ACTIONS :\n" + data.whatToDo.join("\n");
-                            }
-                            
-                            if (data.recommended || data.recommendedFix) {
-                              msg += "\n\n✅ " + (data.recommended || data.recommendedFix);
-                            }
+                            // Toujours afficher la réponse brute complète
+                            msg += "\n\n📦 RÉPONSE COMPLÈTE DU SERVEUR :\n" + JSON.stringify(data, null, 2);
 
                             msg += "\n\n────────────────────────────────────────";
-                            msg += "\n🔥 ÉTAPE CRITIQUE :";
-                            msg += "\n1. Va sur Vercel → Deployments";
-                            msg += "\n2. Clique sur le dernier déploiement";
-                            msg += "\n3. Ouvre **Function Logs** (PAS Build Logs)";
-                            msg += "\n4. Réessaie d'uploader un logo";
-                            msg += "\n5. Copie **l'erreur complète** qui apparaît dans les logs";
-                            msg += "\n6. Colle TOUT ici (c'est la seule façon de voir la vraie cause)";
+                            msg += "\n📋 COPIE TOUT CE TEXTE et colle-le ici (très important pour diagnostiquer).";
 
                             alert(msg);
+                            console.error("Upload logo error (full response):", data);
                           }
                         } catch (err) {
                           alert("Erreur réseau lors de l'upload");
@@ -446,7 +420,7 @@ export default function SettingsPage() {
                 )}
 
                 <p className="text-xs text-[#5C4033]/60 mt-3">
-                  Le logo sera stocké via Vercel Blob et utilisé automatiquement sur les tickets thermiques et factures A4.
+                  Le logo est stocké directement dans la base de données (solution fiable sans dépendance externe). Il apparaîtra sur les tickets et factures A4.
                 </p>
               </div>
             )}

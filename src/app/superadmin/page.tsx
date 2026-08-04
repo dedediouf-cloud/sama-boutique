@@ -872,10 +872,14 @@ export default function SuperAdminDashboard() {
                                     const data = await res.json();
                                     if (res.ok) {
                                       alert("✅ Logo mis à jour pour cette boutique !");
-                                      // Optionnel : recharger la liste
                                       fetchBoutiques();
                                     } else {
-                                      alert("Erreur : " + (data.error || "Impossible d'uploader le logo"));
+                                      // Afficher les détails réels de l'erreur
+                                      const errorMsg = data.details 
+                                        ? `${data.error} — ${data.details}` 
+                                        : (data.error || "Impossible d'uploader le logo");
+                                      alert("Erreur : " + errorMsg);
+                                      console.error("Logo upload failed (superadmin):", data);
                                     }
                                   } catch (err) {
                                     alert("Erreur réseau lors de l'upload du logo");
