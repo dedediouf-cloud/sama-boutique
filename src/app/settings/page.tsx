@@ -389,6 +389,9 @@ export default function SettingsPage() {
                             if (data.strategiesTried) {
                               msg += "\nStratégies essayées : " + JSON.stringify(data.strategiesTried);
                             }
+                            if (data.isMissingColumn) {
+                              msg += "\n\n⚠️ PROBLÈME DÉTECTÉ : La colonne 'logoUrl' n'existe pas en base de données !";
+                            }
 
                             // Toujours afficher la réponse brute complète
                             msg += "\n\n📦 RÉPONSE COMPLÈTE DU SERVEUR :\n" + JSON.stringify(data, null, 2);

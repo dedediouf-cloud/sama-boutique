@@ -87,10 +87,26 @@ export async function POST(request: NextRequest) {
     // Version marquée pour confirmer que le bon code est déployé
     console.log(`[LOGO-UPLOAD ${LOGO_UPLOAD_VERSION}] Starting raw update for ownerId=${ownerId}, dataUrlLen=${dataUrl.length}`);
 
+    // === FIX ROBUSTE COLONNE logoUrl (42703 / P2010) ===
+    // On force la création de la colonne AVANT chaque tentative d'UPDATE.
+    // Cela résout les cas où la colonne n'existe pas en production.
+    const ensureLogoColumn = async () => {
+      try {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "logoUrl" TEXT;`
+        );
+        console.log(`[LOGO-UPLOAD ${LOGO_UPLOAD_VERSION}] ✅ Colonne logoUrl assurée (ALTER IF NOT EXISTS)`);
+      } catch (e: any) {
+        console.warn("[LOGO-UPLOAD] ALTER non bloquant:", e?.message?.substring(0, 140));
+      }
+    };
+
+    await ensureLogoColumn();
+
     let updateSucceeded = false;
     let lastUpdateError: any = null;
 
-    // Stratégie 1 : $executeRaw (template literal) - la plus sûre
+    // Tentative 1 : Template literal
     try {
       await prisma.$executeRaw`
         UPDATE "User" 
@@ -99,14 +115,15 @@ export async function POST(request: NextRequest) {
         WHERE "id" = ${ownerId}
       `;
       updateSucceeded = true;
-      console.log(`[LOGO-UPLOAD ${LOGO_UPLOAD_VERSION}] ✅ SUCCESS via $executeRaw (template)`);
+      console.log(`[LOGO-UPLOAD ${LOGO_UPLOAD_VERSION}] ✅ SUCCESS via $executeRaw`);
     } catch (err1: any) {
       lastUpdateError = err1;
-      console.warn("[LOGO-UPLOAD] $executeRaw template échoué, essai du fallback unsafe...", err1?.message?.substring(0, 200));
+      console.warn("[LOGO-UPLOAD] $executeRaw a échoué → tentative 2", err1?.code || err1?.message?.substring(0, 100));
     }
 
-    // Stratégie 2 : Fallback $executeRawUnsafe (si le template échoue pour une raison obscure)
+    // Tentative 2 : Unsafe + re-assure column
     if (!updateSucceeded) {
+      await ensureLogoColumn();
       try {
         await prisma.$executeRawUnsafe(
           `UPDATE "User" SET "logoUrl" = $1, "updatedAt" = NOW() WHERE "id" = $2`,
@@ -114,10 +131,28 @@ export async function POST(request: NextRequest) {
           ownerId
         );
         updateSucceeded = true;
-        console.log(`[LOGO-UPLOAD ${LOGO_UPLOAD_VERSION}] ✅ SUCCESS via $executeRawUnsafe (fallback)`);
+        console.log(`[LOGO-UPLOAD ${LOGO_UPLOAD_VERSION}] ✅ SUCCESS via $executeRawUnsafe`);
       } catch (err2: any) {
         lastUpdateError = err2;
-        console.error(`=== ÉCHEC DES DEUX STRATÉGIES RAW SQL (${LOGO_UPLOAD_VERSION}) ===`);
+      }
+    }
+
+    // Tentative 3 : Dernier recours (double ALTER + update)
+    if (!updateSucceeded) {
+      await ensureLogoColumn();
+      try {
+        await prisma.$executeRawUnsafe(
+          `ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "logoUrl" TEXT;`
+        );
+        await prisma.$executeRawUnsafe(
+          `UPDATE "User" SET "logoUrl" = $1, "updatedAt" = NOW() WHERE "id" = $2`,
+          dataUrl,
+          ownerId
+        );
+        updateSucceeded = true;
+        console.log(`[LOGO-UPLOAD ${LOGO_UPLOAD_VERSION}] ✅ SUCCESS via triple fix`);
+      } catch (err3: any) {
+        lastUpdateError = err3;
       }
     }
 

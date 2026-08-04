@@ -880,6 +880,7 @@ export default function SuperAdminDashboard() {
                                       if (data.code) errorMsg += "\nCode : " + data.code;
                                       if (data.ownerId || data.ownerIdAttempted) errorMsg += "\nOwnerId : " + (data.ownerId || data.ownerIdAttempted);
                                       if (data.strategiesTried) errorMsg += "\nStratégies essayées : " + JSON.stringify(data.strategiesTried);
+                                      if (data.isMissingColumn) errorMsg += "\n⚠️ Colonne logoUrl manquante en base !";
                                       if (data.method) errorMsg += "\nMéthode : " + data.method;
                                       if (data.version) errorMsg += "\nVersion : " + data.version;
                                       if (data.verified !== undefined) errorMsg += "\nVérifié en DB : " + data.verified;
