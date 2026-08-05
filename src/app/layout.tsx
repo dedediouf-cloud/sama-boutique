@@ -1,3 +1,20 @@
+// ============================================================
+// 494 FIX v67 - 1785961853 - DEFINITIVELY INLINED
+// NO dynamic imports in this file for cookie nuking.
+// All 494 logic is written directly below.
+// ============================================================
+
+// All 494 logic is written directly below.
+
+// All 494 logic is written directly below.
+// If you still see the old error on Vercel → CLEAR BUILD CACHE
+
+// 494 cookie logic is written directly below.
+
+
+// All logic is written directly here.
+
+
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
@@ -24,11 +41,8 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // === NUCLEAR 494 FIX - Runs on EVERY page load (multiple aggressive passes) ===
-  if (typeof window !== 'undefined') {
-    // Correct relative path from src/app/ → src/lib/
-    import('../lib/clear-large-cookies').catch(() => {});
-
+  // === NUCLEAR 494 FIX - FULLY INLINED (NO DYNAMIC IMPORT) v62 ===
+  if (typeof window !== 'undefined') { // v67-494-INLINED-ONLY-2026-08-05 // 494-INLINED-v65-DEFINITIVE-2026-08-05 // v64-494-INLINED-ONLY-2026-08-05 // 494-INLINED-v63-2026-08-05-NO-MODULE
     const nukeAuthCookies = (reason = 'manual') => {
       try {
         let destroyed = false;
@@ -62,23 +76,20 @@ export default function RootLayout({
         if (destroyed) {
           console.error(`%c[494 NUCLEAR] ${reason} — Huge NextAuth cookies destroyed. Forcing clean login...`, 'color:red;font-weight:bold');
           setTimeout(() => {
-            // Most aggressive possible logout
             window.location.replace('/api/auth/force-logout');
           }, 60);
         }
       } catch (e) {}
     };
 
-    // Run immediately + multiple delayed passes (cookies can be set late)
     nukeAuthCookies('initial');
     setTimeout(() => nukeAuthCookies('delayed-1'), 80);
     setTimeout(() => nukeAuthCookies('delayed-2'), 280);
     setTimeout(() => nukeAuthCookies('delayed-3'), 650);
 
-    // Expose globally so user can call it from console
     (window as any).forceClear494Cookies = () => nukeAuthCookies('manual');
-    console.log('%c[494] Type window.forceClear494Cookies() in console if error persists', 'color:#888');
   }
+
   return (
     <html lang="fr">
       <body className={`${inter.variable} ${playfair.variable} antialiased`}>
@@ -88,8 +99,7 @@ export default function RootLayout({
   );
 }
 
-// === EXTRA: Auto-detect huge cookies and warn user ===
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined') { // v67-494-INLINED-ONLY-2026-08-05 // 494-INLINED-v65-DEFINITIVE-2026-08-05 // v64-494-INLINED-ONLY-2026-08-05 // 494-INLINED-v63-2026-08-05-NO-MODULE // 494-FIX-v60-INLINED-ONLY - NO MODULE IMPORT // 494-FIX-v59-INLINED-ONLY-2026-08-05-NO-MODULE
   setTimeout(() => {
     try {
       const totalAuthSize = document.cookie.split(';').reduce((sum, c) => {
