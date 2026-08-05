@@ -1,26 +1,5 @@
-// ============================================================
-// 494 + SYNTAX FIX - 2026-08-05 FINAL
-// LOCAL FILE IS CLEAN.
-// The only code is: doc.save(fileName);
-// ============================================================
-
-============================================================
-
-// v9-FINAL-CLEAN-2026-08-05_160617 | 494-SYNTAX-FIX | NO-MARKDOWN-DOC-SAVE
-
-// BUILD-ID:6d1d00ee-20260805-160609-494-SYNTAX-FIX-v9
-
-// CACHE-BUSTER-494-FIX-v2026-08-05_16-05-18-FINAL-DO-NOT-REMOVE
-
-// === SYNTAX + 494 FIX 2026-08-05-v4 (FINAL) ===
-
-// This file was patched to remove ALL doc.save(...) markdown links
-
-// that were causing "Expression expected" at line 885 during Turbopack build.
-
-// If you see the mangled version on Vercel: CLEAR BUILD CACHE + REDEPLOY.
-
-// Timestamp: 2026-08-05-16:10
+// 494 + SYNTAX FIX v25 (2026-08-05) - CLEAN
+// Only plain JavaScript. No merge markers.
 
 "use client";
 
@@ -1525,10 +1504,6 @@ export default function SalesPage() {
     doc.text("Bonne journée !", 105, y, { align: "center" });
 
     const fileName = `facture-${ticketNumber}.pdf`;
-    // === 2026-08-05 FINAL CLEAN (v21) ===
-    // This line is PLAIN: doc.save(fileName);
-    // NO markdown, NO brackets. If you see the mangled version on Vercel,
-    // you MUST "Clear build cache" during redeploy.
     doc.save(fileName);
   };
 
