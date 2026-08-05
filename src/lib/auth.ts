@@ -64,13 +64,10 @@ export const authOptions: NextAuthOptions = {
             shopName: user.shopName,
             shopSlug: user.shopSlug,
             phone: user.phone || undefined,
-            // @ts-ignore — CRITICAL VERCEL FIX
-            // `user` is cast to `any` on the fetch line above.
-            // `logoUrl` exists in schema.prod.prisma + the database.
-            // @prisma/client types are stale during `next build`
-            // (Turbopack + restored build cache).
-            // We force explicit `as any` access here.
-            logoUrl: (user as any).logoUrl || undefined,
+            // CRITICAL FIX FOR 494 REQUEST_HEADER_TOO_LARGE
+            // We NEVER return logoUrl (base64) from authorize().
+            // Large base64 in the initial user object ends up in the JWT cookie.
+            // The logo is fetched exclusively via localStorage + /api/user/logo.
             role: "admin",
             ownerId: user.id,
           } as any;
@@ -114,14 +111,28 @@ export const authOptions: NextAuthOptions = {
         session.user.shopName = token.shopName as string;
         session.user.shopSlug = token.shopSlug as string;
         session.user.phone = token.phone as string;
-        session.user.logoUrl = (token as any).logoUrl ?? null;
+
+        // === PROTECTION 494 ABSOLUE ===
+        // On supprime TOUT ce qui pourrait contenir le logo base64
+        const u = session.user as any;
+        u.logoUrl = null;
+        u.logo = null;
+        delete u.logoUrl;
+        delete u.logo;
+
         session.user.role = token.role as string;
         session.user.ownerId = token.ownerId as string;
       }
 
-      // Support for manual session update (e.g. after logo upload)
-      if (trigger === "update" && newSession?.user?.logoUrl) {
-        session.user.logoUrl = newSession.user.logoUrl;
+      // Support for manual session update — we NEVER accept logoUrl here.
+      // Passing logoUrl in update() is what causes 494 REQUEST_HEADER_TOO_LARGE.
+      // Any logo data must come exclusively from localStorage or /api/user/logo
+      if (trigger === "update") {
+        // Explicitly ensure no heavy logoUrl leaks into session
+        if (session.user) {
+          (session.user as any).logoUrl = null;
+          delete (session.user as any).logoUrl;
+        }
       }
 
       return session;
@@ -131,14 +142,17 @@ export const authOptions: NextAuthOptions = {
         token.shopName = user.shopName;
         token.shopSlug = user.shopSlug;
         token.phone = user.phone;
-        token.logoUrl = (user as any).logoUrl || null;
+        // CRITICAL FIX: Never store logoUrl (base64) in the JWT token.
+        // Large base64 strings in JWT → huge cookies → 494 REQUEST_HEADER_TOO_LARGE
+        token.logoUrl = null;
         token.role = user.role;
         token.ownerId = user.ownerId;
       }
 
-      // Allow updating logoUrl dynamically without full re-login
-      if (trigger === "update" && session?.user?.logoUrl) {
-        token.logoUrl = session.user.logoUrl;
+      // Do NOT allow heavy logoUrl into the token even on update
+      // (the update() call is only to trigger revalidation)
+      if (trigger === "update") {
+        // We intentionally leave token.logoUrl = null
       }
 
       return token;

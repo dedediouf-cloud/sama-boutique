@@ -45,7 +45,8 @@ const paymentStatusLabels: Record<string, { label: string; color: string }> = {
 const productIcons = ["✨", "🎁", "💎", "🛍️", "🌟", "🏺", "🕯️", "🧴", "👜", "🧣"];
 
 export default function SalesPage() {
-  const { data: session, status, update } = useSession();
+  // Note importante : on n'utilise plus `update()` pour le logo (évite 494)
+  const { data: session, status } = useSession();
 
   // === ÉTATS ===
   const [products, setProducts] = useState<any[]>([]);
@@ -65,18 +66,22 @@ export default function SalesPage() {
   const [cashSession, setCashSession] = useState<any>(null);
   const [showCashModal, setShowCashModal] = useState(false);
 
-  // === LECTURE ROBUSTE DU LOGO (base64) - stable ===
+  // === LECTURE ROBUSTE DU LOGO (base64) - JAMAIS depuis session (cause 494) ===
   const getCurrentLogo = useCallback((): string | null => {
-    const u = (session?.user as any) || {};
-    return u.logoUrl || null;
+    // On ne lit JAMAIS depuis session.user.logoUrl
+    // (cela peut contenir des données anciennes de JWT géant)
+    return null;
   }, [session]);
 
   // Fonction DÉDIÉE et ULTRA-ROBUSTE pour récupérer le logo le plus frais possible
+  // IMPORTANT : On ne lit JAMAIS logoUrl depuis la session NextAuth (JWT) car 
+  // les gros base64 provoquent l'erreur 494 REQUEST_HEADER_TOO_LARGE.
+  // Sources fiables : localStorage > API légère /api/user/logo > DB indirecte
   const getFreshLogo = async (): Promise<string | null> => {
     try {
       console.log('[LOGO] === Début récupération logo frais ===');
 
-      // === PRIORITÉ ABSOLUE 1 : localStorage (le plus fiable côté client, set lors de l'upload) ===
+      // === PRIORITÉ ABSOLUE 1 : localStorage (le plus fiable côté client) ===
       try {
         const stored = localStorage.getItem('boutique_last_logo');
         if (stored && typeof stored === 'string' && stored.startsWith('data:')) {
@@ -85,47 +90,42 @@ export default function SalesPage() {
         }
       } catch (e) {}
 
-      // === Tentative 2 : update() avec retour direct (le plus important) ===
+      // === PRIORITÉ 2 : API légère dédiée (évite les gros cookies JWT) ===
       try {
-        const newSess = await update();
-        await new Promise(r => setTimeout(r, 750));
-        
-        const u = (newSess?.user as any) || {};
-        const logoFromUpdate = u.logoUrl || (newSess as any)?.user?.logoUrl;
-        
-        if (logoFromUpdate && typeof logoFromUpdate === 'string' && logoFromUpdate.startsWith('data:')) {
-          console.log('[LOGO] ✅ Succès via update() retour (len:', logoFromUpdate.length, ')');
-          return logoFromUpdate;
+        const res = await fetch('/api/user/logo', { 
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.logoUrl && typeof data.logoUrl === 'string' && data.logoUrl.startsWith('data:')) {
+            console.log('[LOGO] ✅ Succès via /api/user/logo (len:', data.logoUrl.length, ')');
+            // On resynchronise localStorage au passage (très utile)
+            try { localStorage.setItem('boutique_last_logo', data.logoUrl); } catch {}
+            return data.logoUrl;
+          }
         }
       } catch (e) {
-        console.warn('[LOGO] update() a échoué');
+        console.warn('[LOGO] /api/user/logo a échoué');
       }
 
-      // === Tentative 3 : session actuelle (après délai) ===
-      const currentU = (session?.user as any) || {};
-      const currentLogo = currentU.logoUrl || getCurrentLogo();
-      if (currentLogo && typeof currentLogo === 'string' && currentLogo.startsWith('data:')) {
-        console.log('[LOGO] ✅ Succès via session actuelle');
-        return currentLogo;
-      }
+      // === Pas d'appel à update() du tout (sécurité 494) ===
+      // update() peut parfois renvoyer ou rafraîchir un JWT ancien contenant encore du base64.
+      // On se base uniquement sur localStorage + l'API légère.
 
-      // === Tentative 4 : /api/auth/session direct ===
+      // === Tentative 4 : /api/auth/session (mais on ignore logoUrl pour éviter les gros headers) ===
       try {
         const res = await fetch('/api/auth/session', { 
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache' }
         });
         if (res.ok) {
-          const sessData = await res.json();
-          const directLogo = sessData?.user?.logoUrl;
-          if (directLogo && typeof directLogo === 'string' && directLogo.startsWith('data:')) {
-            console.log('[LOGO] ✅ Succès via /api/auth/session');
-            return directLogo;
-          }
+          // On ne lit PAS sessData.user.logoUrl (volontairement)
+          // On préfère re-vérifier localStorage
         }
       } catch {}
 
-      // === Dernier fallback localStorage (redondant mais sûr) ===
+      // === Dernier recours : localStorage ===
       try {
         const stored = localStorage.getItem('boutique_last_logo');
         if (stored && stored.startsWith('data:')) {
@@ -134,16 +134,15 @@ export default function SalesPage() {
         }
       } catch {}
 
-      console.warn('[LOGO] ❌ ÉCHEC TOTAL - Aucun logo data: trouvé');
+      console.warn('[LOGO] ❌ ÉCHEC TOTAL - Aucun logo data: trouvé (re-uploadez le logo)');
       return null;
     } catch (e) {
       console.warn('[LOGO] Erreur critique getFreshLogo:', e);
-      // Dernier recours localStorage sync
       try {
         const stored = localStorage.getItem('boutique_last_logo');
         if (stored && stored.startsWith('data:')) return stored;
       } catch {}
-      return getCurrentLogo();
+      return null;
     }
   };
 

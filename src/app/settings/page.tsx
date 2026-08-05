@@ -29,7 +29,9 @@ interface PaymentSettings {
 }
 
 export default function SettingsPage() {
-  const { data: session, update } = useSession();
+  // CRITICAL: on n'utilise plus du tout `update` de useSession
+  // (passer le logo via update() = 494 REQUEST_HEADER_TOO_LARGE)
+  const { data: session } = useSession();
   const [settings, setSettings] = useState<PaymentSettings>({
     paymentsEnabled: false,
     defaultPaymentMethod: "cash",
@@ -50,17 +52,21 @@ export default function SettingsPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
-  // Use strongly-typed cast from our augmentation
-  const user = session?.user as ExtendedUser | undefined;
-  const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(user?.logoUrl ?? null);
+  // IMPORTANT: On ne lit JAMAIS le logo depuis la session (cause 494)
+  // Le logo est uniquement dans localStorage + /api/user/logo
+  const [currentLogoUrl, setCurrentLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSettings();
-    // Load current logo from session if available (typed cast)
-    if (user?.logoUrl) {
-      setCurrentLogoUrl(user.logoUrl);
-    }
-  }, [session]);
+
+    // Charger le logo depuis localStorage seulement (sécurisé)
+    try {
+      const stored = localStorage.getItem('boutique_last_logo');
+      if (stored && stored.startsWith('data:')) {
+        setCurrentLogoUrl(stored);
+      }
+    } catch {}
+  }, []);  // pas de dépendance session pour éviter les gros headers
 
   const fetchSettings = async () => {
     try {
@@ -377,14 +383,12 @@ export default function SettingsPage() {
                               console.warn('[LOGO SETTINGS] localStorage failed:', e);
                             }
 
-                            // Force refresh de la session NextAuth avec le logoUrl (important pour NextAuth)
-                            try {
-                              await update({ user: { logoUrl: data.logoUrl } });
-                              await new Promise(r => setTimeout(r, 1200));
-                              console.log('[LOGO SETTINGS] ✅ Session update({logoUrl}) effectué');
-                            } catch (e) {
-                              console.warn("[LOGO SETTINGS] Session update warning:", e);
-                            }
+                            // === SÉCURITÉ MAXIMALE CONTRE 494 ===
+                            // On NE FAIT PLUS AUCUN update() ici (même vide)
+                            // Le moindre appel update() peut parfois sérialiser l'état courant
+                            // et causer des gros headers si une ancienne session a encore des données.
+                            console.log('[LOGO SETTINGS] ✅ Sauvegarde 100% via localStorage + reload (AUCUN update())');
+                            // Pas d'appel à update() du tout pour éviter 494
 
                             alert("✅ Logo mis à jour avec succès !\n\nIl apparaîtra sur les tickets et factures.\n\n→ IMPORTANT : Allez sur la page Ventes et rechargez complètement (Ctrl+Shift+R ou F5) pour synchroniser.");
 
