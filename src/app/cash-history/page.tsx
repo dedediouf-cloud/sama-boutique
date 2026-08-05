@@ -106,9 +106,21 @@ export default function CashHistoryPage() {
     link.click();
   };
 
-  const user = session?.user as ExtendedUser | undefined;
-  const shopLogo = user?.logoUrl || null;
   const shopName = session?.user?.shopName || "Ma Boutique";
+
+  // === SÉCURITÉ 494 ABSOLUE ===
+  // Ne JAMAIS lire logoUrl depuis session (JWT énorme)
+  // Utilise uniquement localStorage (mis à jour par /settings)
+  const [shopLogo, setShopLogo] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem('boutique_last_logo');
+      if (stored && stored.startsWith('data:')) {
+        setShopLogo(stored);
+      }
+    } catch {}
+  }, []);
 
   return (
     <ProtectedRoute>

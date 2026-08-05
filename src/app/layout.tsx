@@ -24,20 +24,59 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // === NETTOYAGE SÉCURITÉ 494 (exécuté côté client) ===
-  // Supprime toute trace de logo base64 qui aurait pu rester dans le localStorage ou sessionStorage
-  // (utile après un ancien déploiement qui mettait le logo dans le JWT)
+  // === NUCLEAR 494 FIX - Runs on EVERY page load (multiple aggressive passes) ===
   if (typeof window !== 'undefined') {
-    try {
-      // Nettoie les anciennes clés potentiellement problématiques
-      const badKeys = ['next-auth.session-token', '__Secure-next-auth.session-token'];
-      // On ne supprime PAS boutique_last_logo (c'est la source légitime)
-      // Mais on peut logger si un logo trop gros est présent
-      const logo = localStorage.getItem('boutique_last_logo');
-      if (logo && logo.length > 400000) {
-        console.warn('[494 FIX] Logo très volumineux détecté dans localStorage. Recommandé de le re-uploader.');
-      }
-    } catch {}
+    import('./lib/clear-large-cookies').catch(() => {});
+
+    const nukeAuthCookies = (reason = 'manual') => {
+      try {
+        let destroyed = false;
+        const cookies = document.cookie.split(';');
+
+        cookies.forEach(raw => {
+          const name = raw.trim().split('=')[0];
+          if (!name) return;
+
+          const isAuthCookie = name.includes('next-auth') || 
+                               name.includes('__Secure-next-auth') || 
+                               name.includes('__Host-next-auth');
+
+          if (isAuthCookie) {
+            destroyed = true;
+            const exp = 'expires=Thu, 01 Jan 1970 00:00:00 GMT';
+            const paths = ['/', '/api', '/sales', '/settings', '/login', '/dashboard'];
+            const domains = ['', location.hostname, '.' + location.hostname, location.host];
+
+            paths.forEach(p => {
+              domains.forEach(d => {
+                let str = `${name}=;${exp};path=${p}`;
+                if (d) str += `;domain=${d}`;
+                document.cookie = str;
+                document.cookie = str + ';secure';
+              });
+            });
+          }
+        });
+
+        if (destroyed) {
+          console.error(`%c[494 NUCLEAR] ${reason} — Huge NextAuth cookies destroyed. Forcing clean login...`, 'color:red;font-weight:bold');
+          setTimeout(() => {
+            // Most aggressive possible logout
+            window.location.replace('/api/auth/force-logout');
+          }, 60);
+        }
+      } catch (e) {}
+    };
+
+    // Run immediately + multiple delayed passes (cookies can be set late)
+    nukeAuthCookies('initial');
+    setTimeout(() => nukeAuthCookies('delayed-1'), 80);
+    setTimeout(() => nukeAuthCookies('delayed-2'), 280);
+    setTimeout(() => nukeAuthCookies('delayed-3'), 650);
+
+    // Expose globally so user can call it from console
+    (window as any).forceClear494Cookies = () => nukeAuthCookies('manual');
+    console.log('%c[494] Type window.forceClear494Cookies() in console if error persists', 'color:#888');
   }
   return (
     <html lang="fr">
@@ -46,4 +85,32 @@ export default function RootLayout({
       </body>
     </html>
   );
+}
+
+// === EXTRA: Auto-detect huge cookies and warn user ===
+if (typeof window !== 'undefined') {
+  setTimeout(() => {
+    try {
+      const totalAuthSize = document.cookie.split(';').reduce((sum, c) => {
+        const name = c.trim().split('=')[0];
+        if (name && (name.includes('next-auth') || name.includes('__Secure'))) {
+          return sum + c.length;
+        }
+        return sum;
+      }, 0);
+
+      if (totalAuthSize > 2500) {
+        console.error('%c[494 CRITICAL] Your NextAuth cookies are still very large (' + totalAuthSize + ' chars). Please visit /clear-494.html immediately.', 'color:red;font-size:13px');
+        
+        // Optional: show a small banner (non-intrusive)
+        if (!document.getElementById('494-banner')) {
+          const banner = document.createElement('div');
+          banner.id = '494-banner';
+          banner.style.cssText = 'position:fixed;bottom:12px;right:12px;background:#fee2e2;color:#991b1b;padding:8px 14px;border-radius:8px;font-size:12px;z-index:99999;border:1px solid #fecaca';
+          banner.innerHTML = '⚠️ Erreur 494 possible. <a href="/clear-494.html" style="color:#991b1b;text-decoration:underline">Nettoyer les cookies</a>';
+          document.body.appendChild(banner);
+        }
+      }
+    } catch(e) {}
+  }, 1200);
 }

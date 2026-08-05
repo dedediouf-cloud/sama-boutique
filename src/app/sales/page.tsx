@@ -113,17 +113,9 @@ export default function SalesPage() {
       // update() peut parfois renvoyer ou rafraîchir un JWT ancien contenant encore du base64.
       // On se base uniquement sur localStorage + l'API légère.
 
-      // === Tentative 4 : /api/auth/session (mais on ignore logoUrl pour éviter les gros headers) ===
-      try {
-        const res = await fetch('/api/auth/session', { 
-          cache: 'no-store',
-          headers: { 'Cache-Control': 'no-cache' }
-        });
-        if (res.ok) {
-          // On ne lit PAS sessData.user.logoUrl (volontairement)
-          // On préfère re-vérifier localStorage
-        }
-      } catch {}
+      // === Tentative 4 : /api/auth/session — DÉSACTIVÉ pour 494 ===
+      // Appeler /api/auth/session peut renvoyer un JWT énorme → 494
+      // On l'ignore complètement.
 
       // === Dernier recours : localStorage ===
       try {
@@ -457,10 +449,9 @@ export default function SalesPage() {
     // 3. Session au moment exact
     if (!finalLogo) {
       const sessU = (session?.user as any) || {};
-      const sessLogo = sessU.logoUrl || (session as any)?.user?.logoUrl;
-      if (sessLogo && typeof sessLogo === 'string' && sessLogo.startsWith('data:')) {
-        finalLogo = sessLogo;
-        logoSource = 'session';
+      
+        
+        
       }
     }
 
@@ -492,8 +483,8 @@ export default function SalesPage() {
       logoPrefix: finalLogo ? finalLogo.substring(0, 50) : null,
       logoLength: finalLogo ? finalLogo.length : 0,
       startsWithData: finalLogo ? finalLogo.startsWith('data:') : false,
-      sessionUserLogoPresent: !!(session?.user as any)?.logoUrl,
-      sessionUserLogoPrefix: (session?.user as any)?.logoUrl ? String((session?.user as any).logoUrl).substring(0, 30) : null,
+      sessionUserLogoPresent: false,
+      sessionUserLogoPrefix: null,
       localStoragePresent: !!localStorage.getItem('boutique_last_logo'),
     });
 
@@ -696,10 +687,9 @@ export default function SalesPage() {
     // 3. Session au moment exact
     if (!finalLogo) {
       const sessU = (session?.user as any) || {};
-      const sessLogo = sessU.logoUrl || (session as any)?.user?.logoUrl;
-      if (sessLogo && typeof sessLogo === 'string' && sessLogo.startsWith('data:')) {
-        finalLogo = sessLogo;
-        logoSource = 'session';
+      
+        
+        
       }
     }
 
@@ -731,8 +721,8 @@ export default function SalesPage() {
       logoPrefix: finalLogo ? finalLogo.substring(0, 50) : null,
       logoLength: finalLogo ? finalLogo.length : 0,
       startsWithData: finalLogo ? finalLogo.startsWith('data:') : false,
-      sessionUserLogoPresent: !!(session?.user as any)?.logoUrl,
-      sessionUserLogoPrefix: (session?.user as any)?.logoUrl ? String((session?.user as any).logoUrl).substring(0, 30) : null,
+      sessionUserLogoPresent: false,
+      sessionUserLogoPrefix: null,
       localStoragePresent: !!localStorage.getItem('boutique_last_logo'),
     });
 

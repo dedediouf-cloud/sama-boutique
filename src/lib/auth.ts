@@ -142,18 +142,18 @@ export const authOptions: NextAuthOptions = {
         token.shopName = user.shopName;
         token.shopSlug = user.shopSlug;
         token.phone = user.phone;
-        // CRITICAL FIX: Never store logoUrl (base64) in the JWT token.
-        // Large base64 strings in JWT → huge cookies → 494 REQUEST_HEADER_TOO_LARGE
-        token.logoUrl = null;
         token.role = user.role;
         token.ownerId = user.ownerId;
       }
 
-      // Do NOT allow heavy logoUrl into the token even on update
-      // (the update() call is only to trigger revalidation)
-      if (trigger === "update") {
-        // We intentionally leave token.logoUrl = null
+      // === NUCLEAR STRIP FOR 494 (runs on EVERY token refresh) ===
+      // Force-remove ANY logoUrl that might be lingering from old deployments.
+      // This is the only way to shrink already-issued huge JWT cookies.
+      if ((token as any).logoUrl) {
+        console.warn('[AUTH] Stripping legacy logoUrl from JWT to prevent 494');
       }
+      (token as any).logoUrl = null;
+      delete (token as any).logoUrl;
 
       return token;
     },
