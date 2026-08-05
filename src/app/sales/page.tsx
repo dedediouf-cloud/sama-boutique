@@ -71,6 +71,55 @@ export default function SalesPage() {
     return u.logoUrl || null;
   }, [session]);
 
+  // Fonction dédiée et TRÈS ROBUSTE pour récupérer le logo le plus frais possible
+  const getFreshLogo = async (): Promise<string | null> => {
+    try {
+      console.log('[LOGO] Tentative récupération logo frais...');
+
+      // === Tentative 1 : update() session (priorité haute) ===
+      let logo: any = null;
+      try {
+        const newSess = await update();
+        await new Promise(r => setTimeout(r, 700));
+        const u = (newSess?.user as any) || (session?.user as any) || {};
+        logo = u.logoUrl || (session as any)?.user?.logoUrl || getCurrentLogo();
+      } catch (e) {
+        console.warn('[LOGO] update() a échoué');
+      }
+
+      if (logo && typeof logo === 'string' && logo.startsWith('data:')) {
+        console.log('[LOGO] ✅ Logo via session update (len:', logo.length, ')');
+        return logo;
+      }
+
+      // === Tentative 2 : appel direct à /api/auth/session ===
+      try {
+        const res = await fetch('/api/auth/session', { cache: 'no-store' });
+        if (res.ok) {
+          const sess = await res.json();
+          const direct = sess?.user?.logoUrl;
+          if (direct && typeof direct === 'string' && direct.startsWith('data:')) {
+            console.log('[LOGO] ✅ Logo via /api/auth/session');
+            return direct;
+          }
+        }
+      } catch {}
+
+      // === Tentative 3 : dernier fallback session brute ===
+      const raw = (session as any)?.user?.logoUrl;
+      if (raw && typeof raw === 'string' && raw.startsWith('data:')) {
+        console.log('[LOGO] ✅ Fallback session brute');
+        return raw;
+      }
+
+      console.warn('[LOGO] ❌ Aucun logo data:image trouvé');
+      return null;
+    } catch (e) {
+      console.warn('[LOGO] Erreur getFreshLogo:', e);
+      return getCurrentLogo();
+    }
+  };
+
   // === FETCH STABLES (useCallback) - définis AVANT les useEffect ===
   const fetchCurrentCashSession = useCallback(async () => {
     try {
@@ -289,6 +338,13 @@ export default function SalesPage() {
       return;
     }
 
+    // === NOUVELLE RÈGLE : Vente interdite sans caisse ouverte ===
+    if (!cashSession) {
+      alert("⚠️ Vous devez ouvrir la caisse avant d'effectuer une vente.");
+      setShowCashModal(true);
+      return;
+    }
+
     setSubmittingSale(true);
 
     try {
@@ -314,29 +370,30 @@ export default function SalesPage() {
         throw new Error(data.error || "Erreur lors de la validation de la vente");
       }
 
+      // Clear UI immédiatement (évite double actualisation)
+      const saleData = data;
+      // Clear UI immédiatement (une seule actualisation)
       setCart([]);
       setSelectedCustomer("");
       setSelectedPromotion("");
       setPaymentMethod("cash");
       setPaymentPhone("");
 
-      fetchProducts();
-      fetchSales();
-
-      // ✅ Impression DIRECTE du ticket (boîte d'impression s'ouvre automatiquement)
-      // Force refresh session + delay pour avoir le logo le plus frais possible
-      setTimeout(async () => {
-        if (data) {
-          try {
-            await update();
-            await new Promise(r => setTimeout(r, 600));
-          } catch {}
-          printTicket(data);
+      // ✅ Impression DIRECTE - une seule fois
+      // printTicket appelle getFreshLogo() en interne (1 seul update + délai)
+      setTimeout(() => {
+        if (saleData) {
+          printTicket(saleData);
         }
-      }, 50);
+
+        // Rafraîchissement des listes APRÈS l'ouverture de l'impression
+        setTimeout(() => {
+          fetchProducts().catch(() => {});
+          fetchSales().catch(() => {});
+        }, 1400);
+      }, 60);
 
     } catch (err: any) {
-      // console.error("Erreur validation vente:", err);
       alert(err.message || "Erreur lors de la validation de la vente");
     } finally {
       setSubmittingSale(false);
@@ -674,27 +731,14 @@ export default function SalesPage() {
 
   // === FONCTIONS PUBLIQUES (force refresh + relecture du logo le plus récent) ===
   // 📥 PDF = Format A4 (facture)
-  // NOTE: on appelle update() UNIQUEMENT ici (juste avant génération PDF) pour éviter le vacillement de la page
   const downloadTicket = async (sale: any) => {
-    let freshLogo: string | null = null;
-    try {
-      const newSess = await update();
-      await new Promise(r => setTimeout(r, 600)); // délai réduit
-      const u = (newSess?.user as any) || (session?.user as any) || {};
-      freshLogo = u.logoUrl || getCurrentLogo() || null;
-    } catch (e) {}
+    const freshLogo = await getFreshLogo();
     generateA4PDF(sale, freshLogo);
   };
 
   // 🖨️ Imprimer + validation = Format 80mm thermal
   const printTicket = async (sale: any) => {
-    let freshLogo: string | null = null;
-    try {
-      const newSess = await update();
-      await new Promise(r => setTimeout(r, 600));
-      const u = (newSess?.user as any) || (session?.user as any) || {};
-      freshLogo = u.logoUrl || getCurrentLogo() || null;
-    } catch (e) {}
+    const freshLogo = await getFreshLogo();
     generateTicketPDF(sale, true, freshLogo);
   };
 
@@ -957,9 +1001,16 @@ export default function SalesPage() {
                       <span>Total</span>
                       <span>{formatPrice(total)} FCFA</span>
                     </div>
+
+                    {!cashSession && (
+                      <div className="text-center text-sm text-amber-600 bg-amber-50 py-2 rounded-xl border border-amber-200">
+                        ⚠️ Ouvrez la caisse pour valider les ventes
+                      </div>
+                    )}
+
                     <button 
                       type="submit"
-                      disabled={submittingSale}
+                      disabled={submittingSale || !cashSession}
                       style={{ 
                         pointerEvents: 'auto', 
                         position: 'relative', 
@@ -967,7 +1018,7 @@ export default function SalesPage() {
                         touchAction: 'manipulation',
                         WebkitTapHighlightColor: 'transparent'
                       }}
-                      className="w-full mt-4 py-3.5 rounded-xl btn-luxe font-medium flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.985] transition-all"
+                      className="w-full mt-2 py-3.5 rounded-xl btn-luxe font-medium flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed active:scale-[0.985] transition-all"
                       onPointerDownCapture={(e) => {
                         e.stopPropagation();
                       }}
@@ -980,7 +1031,9 @@ export default function SalesPage() {
                     >
                       <Receipt size={18} />
                       {submittingSale ? "Validation en cours..." : (
-                        paymentMethod === "cash"
+                        !cashSession 
+                          ? "Ouvrir la caisse d'abord"
+                          : paymentMethod === "cash"
                           ? "Valider la vente + Imprimer"
                           : paymentMethod === "orange_money"
                           ? "Valider + Payer Orange Money"
