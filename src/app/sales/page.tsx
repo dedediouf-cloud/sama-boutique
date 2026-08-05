@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import CashSessionModal from "@/components/CashSessionModal";
 import { useSession } from "next-auth/react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -47,22 +47,7 @@ const productIcons = ["✨", "🎁", "💎", "🛍️", "🌟", "🏺", "🕯️
 export default function SalesPage() {
   const { data: session, status, update } = useSession();
 
-  // === LECTURE ROBUSTE DU LOGO (base64) ===
-  // Toujours lire la version la plus récente possible du logo (même après upload dans /settings)
-  const getCurrentLogo = (): string | null => {
-    const u = (session?.user as any) || {};
-    return u.logoUrl || null;
-  };
-
-  // Force refresh de la session au chargement (pour récupérer le logo fraîchement uploadé)
-  useEffect(() => {
-    if (status === "authenticated") {
-      update().catch(() => {});
-    }
-  }, [status, update]);
-
-  // (plus de shopLogo au niveau module pour éviter les closures obsolètes)
-  // Toujours lire via getCurrentLogo() ou override passé aux generateurs
+  // === ÉTATS ===
   const [products, setProducts] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
   const [sales, setSales] = useState<any[]>([]);
@@ -80,31 +65,24 @@ export default function SalesPage() {
   const [cashSession, setCashSession] = useState<any>(null);
   const [showCashModal, setShowCashModal] = useState(false);
 
-  const toggleSaleDetails = (saleId: string) => {
-    setExpandedSaleId(expandedSaleId === saleId ? null : saleId);
-  };
+  // === LECTURE ROBUSTE DU LOGO (base64) - stable ===
+  const getCurrentLogo = useCallback((): string | null => {
+    const u = (session?.user as any) || {};
+    return u.logoUrl || null;
+  }, [session]);
 
-  useEffect(() => {
-    fetchProducts();
-    fetchCustomers();
-    fetchSales();
-    fetchPromotions();
-    fetchCurrentCashSession();
-  }, []);
-
-  const fetchCurrentCashSession = async () => {
+  // === FETCH STABLES (useCallback) - définis AVANT les useEffect ===
+  const fetchCurrentCashSession = useCallback(async () => {
     try {
       const res = await fetch("/api/cash-sessions");
       if (res.ok) {
         const data = await res.json();
         setCashSession(data);
       }
-    } catch (err) {
-      // ignore
-    }
-  };
+    } catch (err) {}
+  }, []);
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
       const res = await fetch("/api/products");
       const data = await res.json();
@@ -113,78 +91,63 @@ export default function SalesPage() {
     } catch (err) {
       setError("Erreur de connexion");
     }
-  };
+  }, []);
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
       const res = await fetch("/api/customers");
       const data = await res.json();
       if (res.ok && Array.isArray(data)) setCustomers(data);
-    } catch (err) {
-      // console.error("Erreur clients:", err);
-    }
-  };
+    } catch (err) {}
+  }, []);
 
-  const fetchSales = async () => {
+  const fetchSales = useCallback(async () => {
     try {
       const res = await fetch("/api/sales");
       const data = await res.json();
       if (res.ok && Array.isArray(data)) setSales(data);
-    } catch (err) {
-      // console.error("Erreur ventes:", err);
-    }
-  };
+    } catch (err) {}
+  }, []);
 
-  const fetchPromotions = async () => {
+  const fetchPromotions = useCallback(async () => {
     try {
       const res = await fetch("/api/promotions");
       const data = await res.json();
       if (res.ok && Array.isArray(data)) setPromotions(data.filter((p: any) => p.active));
-    } catch (err) {
-      // console.error("Erreur promotions:", err);
-    }
-  };
+    } catch (err) {}
+  }, []);
 
-  const addToCart = (productId: string) => {
+  // === HANDLERS STABLES ===
+  const toggleSaleDetails = useCallback((saleId: string) => {
+    setExpandedSaleId(prev => (prev === saleId ? null : saleId));
+  }, []);
+
+  const addToCart = useCallback((productId: string) => {
     const product = products.find((p) => p.id === productId);
     if (!product) return;
-    const existing = cart.find((item) => item.productId === productId);
-    if (existing) {
-      setCart(cart.map((item) =>
-        item.productId === productId ? { ...item, quantity: item.quantity + 1 } : item
-      ));
-    } else {
-      setCart([...cart, { productId, quantity: 1, price: product.price, name: product.name }]);
-    }
-  };
+    setCart(prevCart => {
+      const existing = prevCart.find((item) => item.productId === productId);
+      if (existing) {
+        return prevCart.map((item) =>
+          item.productId === productId ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      } else {
+        return [...prevCart, { productId, quantity: 1, price: product.price, name: product.name }];
+      }
+    });
+  }, [products]);
 
-  const updateQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
-      setCart(cart.filter((item) => item.productId !== productId));
-    } else {
-      setCart(cart.map((item) => (item.productId === productId ? { ...item, quantity } : item)));
-    }
-  };
+  const updateQuantity = useCallback((productId: string, quantity: number) => {
+    setCart(prevCart => {
+      if (quantity <= 0) {
+        return prevCart.filter((item) => item.productId !== productId);
+      } else {
+        return prevCart.map((item) => (item.productId === productId ? { ...item, quantity } : item));
+      }
+    });
+  }, []);
 
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-
-  const promotion = promotions.find((p) => p.id === selectedPromotion);
-  let discount = 0;
-  if (promotion && subtotal > 0) {
-    const now = new Date();
-    const start = promotion.startDate ? new Date(promotion.startDate) : null;
-    const end = promotion.endDate ? new Date(promotion.endDate) : null;
-    const valid = (!start || now >= start) && (!end || now <= end) && (!promotion.minAmount || subtotal >= promotion.minAmount);
-    if (valid) {
-      if (promotion.type === "percentage") discount = subtotal * (promotion.value / 100);
-      else if (promotion.type === "fixed_amount") discount = promotion.value;
-      discount = Math.min(discount, subtotal);
-    }
-  }
-
-  const total = subtotal - discount;
-
-  const verifyPayment = async (saleId: string) => {
+  const verifyPayment = useCallback(async (saleId: string) => {
     const res = await fetch("/api/payments/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -197,7 +160,79 @@ export default function SalesPage() {
     } else {
       alert(result.error || "Erreur lors de la vérification");
     }
-  };
+  }, [fetchSales]);
+
+  // === VALEURS COMPUTÉES STABLES ===
+  const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.quantity, 0), [cart]);
+
+  const promotion = useMemo(() => promotions.find((p) => p.id === selectedPromotion), [promotions, selectedPromotion]);
+
+  const discount = useMemo(() => {
+    if (!promotion || subtotal <= 0) return 0;
+    const now = new Date();
+    const start = promotion.startDate ? new Date(promotion.startDate) : null;
+    const end = promotion.endDate ? new Date(promotion.endDate) : null;
+    const valid = (!start || now >= start) && (!end || now <= end) && (!promotion.minAmount || subtotal >= promotion.minAmount);
+    if (!valid) return 0;
+    let d = promotion.type === "percentage" ? subtotal * (promotion.value / 100) : promotion.value;
+    return Math.min(d, subtotal);
+  }, [promotion, subtotal]);
+
+  const total = useMemo(() => subtotal - discount, [subtotal, discount]);
+
+  const filteredProducts = useMemo(() =>
+    products.filter((p) =>
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
+    ),
+  [products, searchTerm]);
+
+  const cartMap = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    cart.forEach(item => { map[item.productId] = true; });
+    return map;
+  }, [cart]);
+
+  const productsList = useMemo(() => (
+    Array.isArray(filteredProducts) && filteredProducts.length > 0 ? (
+      filteredProducts.map((p, index) => (
+        <button
+          key={p.id}
+          onClick={() => addToCart(p.id)}
+          disabled={p.quantity <= 0}
+          className="p-2.5 sm:p-3.5 rounded-xl border border-[#D4AF37]/20 bg-[#FDF6E3]/30 text-left hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 group active:scale-[0.985] touch-manipulation min-h-[92px]"
+        >
+          <div className="flex items-start gap-2">
+            <span className="text-lg sm:text-xl mt-0.5">{productIcons[index % productIcons.length]}</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-[#3D2B1F] truncate text-[13px] sm:text-sm leading-tight">{p.name}</p>
+              <p className="text-xs sm:text-sm text-[#B87333] font-semibold mt-0.5">{formatPrice(p.price)} FCFA</p>
+              <p className="text-[10px] text-[#5C4033]/60">Stock: {p.quantity}</p>
+            </div>
+          </div>
+          {cartMap[p.id] && (
+            <p className="text-[10px] text-[#D4AF37] font-medium mt-1 flex items-center gap-1">
+              <CheckCircle size={11} /> Dans le panier
+            </p>
+          )}
+        </button>
+      ))
+    ) : (
+      <p className="text-[#5C4033]/60 col-span-2 text-center py-8">Aucun produit disponible</p>
+    )
+  ), [filteredProducts, addToCart, cartMap]);
+
+  // === CHARGEMENT INITIAL (une seule fois, avec deps stables) ===
+  useEffect(() => {
+    fetchProducts();
+    fetchCustomers();
+    fetchSales();
+    fetchPromotions();
+    fetchCurrentCashSession();
+  }, [fetchProducts, fetchCustomers, fetchSales, fetchPromotions, fetchCurrentCashSession]);
+
+  // === SUPPRESSION DU update() automatique (cause principale du vacillement) ===
+  // Tout est déjà stable grâce aux useCallback / useMemo ci-dessus
 
   // ✅ Annuler une vente (ADMIN SEULEMENT) - Optimistic UI pour instantanéité
   const cancelSale = async (saleId: string, customerName: string) => {
@@ -639,22 +674,14 @@ export default function SalesPage() {
 
   // === FONCTIONS PUBLIQUES (force refresh + relecture du logo le plus récent) ===
   // 📥 PDF = Format A4 (facture)
+  // NOTE: on appelle update() UNIQUEMENT ici (juste avant génération PDF) pour éviter le vacillement de la page
   const downloadTicket = async (sale: any) => {
     let freshLogo: string | null = null;
     try {
-      // IMPORTANT: utiliser la VALEUR RETOURNÉE par update() pour éviter les closures obsolètes
-      const newSess = await update(); // Force refresh de la session pour avoir le logo le plus récent
-      await new Promise(r => setTimeout(r, 800));
-      // Relire le logo LE PLUS frais possible depuis la nouvelle session retournée
+      const newSess = await update();
+      await new Promise(r => setTimeout(r, 600)); // délai réduit
       const u = (newSess?.user as any) || (session?.user as any) || {};
       freshLogo = u.logoUrl || getCurrentLogo() || null;
-
-      // Log supplémentaire pour debug
-      console.log('[LOGO DEBUG - downloadTicket wrapper] après update+delay:', {
-        freshLogoPrefix: freshLogo ? freshLogo.substring(0, 50) : null,
-        length: freshLogo ? freshLogo.length : 0,
-        startsWithData: freshLogo ? freshLogo.startsWith('data:') : false
-      });
     } catch (e) {}
     generateA4PDF(sale, freshLogo);
   };
@@ -663,19 +690,10 @@ export default function SalesPage() {
   const printTicket = async (sale: any) => {
     let freshLogo: string | null = null;
     try {
-      // IMPORTANT: utiliser la VALEUR RETOURNÉE par update() pour éviter les closures obsolètes
-      const newSess = await update(); // Force refresh de la session pour avoir le logo le plus récent
-      await new Promise(r => setTimeout(r, 800));
-      // Relire le logo LE PLUS frais possible depuis la nouvelle session retournée
+      const newSess = await update();
+      await new Promise(r => setTimeout(r, 600));
       const u = (newSess?.user as any) || (session?.user as any) || {};
       freshLogo = u.logoUrl || getCurrentLogo() || null;
-      
-      // Log supplémentaire pour debug
-      console.log('[LOGO DEBUG - printTicket wrapper] après update+delay:', {
-        freshLogoPrefix: freshLogo ? freshLogo.substring(0, 50) : null,
-        length: freshLogo ? freshLogo.length : 0,
-        startsWithData: freshLogo ? freshLogo.startsWith('data:') : false
-      });
     } catch (e) {}
     generateTicketPDF(sale, true, freshLogo);
   };
@@ -683,10 +701,50 @@ export default function SalesPage() {
   // Alias pour compatibilité
   const generateInvoice = downloadTicket;
 
-  const filteredProducts = products.filter((p) =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // === FILTRAGE STABLE (useMemo) ===
+  const filteredProducts = useMemo(() =>
+    products.filter((p) =>
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
+    ),
+  [products, searchTerm]);
+
+  // === Carte pour vérifier rapidement si un produit est dans le panier (optimisation) ===
+  const cartMap = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    cart.forEach(item => { map[item.productId] = true; });
+    return map;
+  }, [cart]);
+
+  // === RENDUS MÉMORISÉS pour éviter le vacillement ===
+  const productsList = useMemo(() => (
+    Array.isArray(filteredProducts) && filteredProducts.length > 0 ? (
+      filteredProducts.map((p, index) => (
+        <button
+          key={p.id}
+          onClick={() => addToCart(p.id)}
+          disabled={p.quantity <= 0}
+          className="p-2.5 sm:p-3.5 rounded-xl border border-[#D4AF37]/20 bg-[#FDF6E3]/30 text-left hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 group active:scale-[0.985] touch-manipulation min-h-[92px]"
+        >
+          <div className="flex items-start gap-2">
+            <span className="text-lg sm:text-xl mt-0.5">{productIcons[index % productIcons.length]}</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-[#3D2B1F] truncate text-[13px] sm:text-sm leading-tight">{p.name}</p>
+              <p className="text-xs sm:text-sm text-[#B87333] font-semibold mt-0.5">{formatPrice(p.price)} FCFA</p>
+              <p className="text-[10px] text-[#5C4033]/60">Stock: {p.quantity}</p>
+            </div>
+          </div>
+          {cartMap[p.id] && (
+            <p className="text-[10px] text-[#D4AF37] font-medium mt-1 flex items-center gap-1">
+              <CheckCircle size={11} /> Dans le panier
+            </p>
+          )}
+        </button>
+      ))
+    ) : (
+      <p className="text-[#5C4033]/60 col-span-2 text-center py-8">Aucun produit disponible</p>
+    )
+  ), [filteredProducts, addToCart, cartMap]);
 
   return (
     <ProtectedRoute>
@@ -801,32 +859,7 @@ export default function SalesPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-1.5 sm:gap-2 max-h-[420px] sm:max-h-[600px] overflow-y-auto pr-1 touch-pan-y">
-                {Array.isArray(filteredProducts) && filteredProducts.length > 0 ? (
-                  filteredProducts.map((p, index) => (
-                    <button
-                      key={p.id}
-                      onClick={() => addToCart(p.id)}
-                      disabled={p.quantity <= 0}
-                      className="p-2.5 sm:p-3.5 rounded-xl border border-[#D4AF37]/20 bg-[#FDF6E3]/30 text-left hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 group active:scale-[0.985] touch-manipulation min-h-[92px]"
-                    >
-                      <div className="flex items-start gap-2">
-                        <span className="text-lg sm:text-xl mt-0.5">{productIcons[index % productIcons.length]}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-[#3D2B1F] truncate text-[13px] sm:text-sm leading-tight">{p.name}</p>
-                          <p className="text-xs sm:text-sm text-[#B87333] font-semibold mt-0.5">{formatPrice(p.price)} FCFA</p>
-                          <p className="text-[10px] text-[#5C4033]/60">Stock: {p.quantity}</p>
-                        </div>
-                      </div>
-                      {cart.find((item) => item.productId === p.id) && (
-                        <p className="text-[10px] text-[#D4AF37] font-medium mt-1 flex items-center gap-1">
-                          <CheckCircle size={11} /> Dans le panier
-                        </p>
-                      )}
-                    </button>
-                  ))
-                ) : (
-                  <p className="text-[#5C4033]/60 col-span-2 text-center py-8">Aucun produit disponible</p>
-                )}
+                {productsList}
               </div>
             </div>
 
