@@ -26,7 +26,8 @@ export default function RootLayout({
 }>) {
   // === NUCLEAR 494 FIX - Runs on EVERY page load (multiple aggressive passes) ===
   if (typeof window !== 'undefined') {
-    import('./lib/clear-large-cookies').catch(() => {});
+    // Correct relative path from src/app/ → src/lib/
+    import('../lib/clear-large-cookies').catch(() => {});
 
     const nukeAuthCookies = (reason = 'manual') => {
       try {
