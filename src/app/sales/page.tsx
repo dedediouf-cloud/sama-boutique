@@ -71,51 +71,78 @@ export default function SalesPage() {
     return u.logoUrl || null;
   }, [session]);
 
-  // Fonction dédiée et TRÈS ROBUSTE pour récupérer le logo le plus frais possible
+  // Fonction DÉDIÉE et ULTRA-ROBUSTE pour récupérer le logo le plus frais possible
   const getFreshLogo = async (): Promise<string | null> => {
     try {
-      console.log('[LOGO] Tentative récupération logo frais...');
+      console.log('[LOGO] === Début récupération logo frais ===');
 
-      // === Tentative 1 : update() session (priorité haute) ===
-      let logo: any = null;
+      // === PRIORITÉ ABSOLUE 1 : localStorage (le plus fiable côté client, set lors de l'upload) ===
+      try {
+        const stored = localStorage.getItem('boutique_last_logo');
+        if (stored && typeof stored === 'string' && stored.startsWith('data:')) {
+          console.log('[LOGO] ✅ Succès via localStorage FIRST (len:', stored.length, ')');
+          return stored;
+        }
+      } catch (e) {}
+
+      // === Tentative 2 : update() avec retour direct (le plus important) ===
       try {
         const newSess = await update();
-        await new Promise(r => setTimeout(r, 700));
-        const u = (newSess?.user as any) || (session?.user as any) || {};
-        logo = u.logoUrl || (session as any)?.user?.logoUrl || getCurrentLogo();
+        await new Promise(r => setTimeout(r, 750));
+        
+        const u = (newSess?.user as any) || {};
+        const logoFromUpdate = u.logoUrl || (newSess as any)?.user?.logoUrl;
+        
+        if (logoFromUpdate && typeof logoFromUpdate === 'string' && logoFromUpdate.startsWith('data:')) {
+          console.log('[LOGO] ✅ Succès via update() retour (len:', logoFromUpdate.length, ')');
+          return logoFromUpdate;
+        }
       } catch (e) {
         console.warn('[LOGO] update() a échoué');
       }
 
-      if (logo && typeof logo === 'string' && logo.startsWith('data:')) {
-        console.log('[LOGO] ✅ Logo via session update (len:', logo.length, ')');
-        return logo;
+      // === Tentative 3 : session actuelle (après délai) ===
+      const currentU = (session?.user as any) || {};
+      const currentLogo = currentU.logoUrl || getCurrentLogo();
+      if (currentLogo && typeof currentLogo === 'string' && currentLogo.startsWith('data:')) {
+        console.log('[LOGO] ✅ Succès via session actuelle');
+        return currentLogo;
       }
 
-      // === Tentative 2 : appel direct à /api/auth/session ===
+      // === Tentative 4 : /api/auth/session direct ===
       try {
-        const res = await fetch('/api/auth/session', { cache: 'no-store' });
+        const res = await fetch('/api/auth/session', { 
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        });
         if (res.ok) {
-          const sess = await res.json();
-          const direct = sess?.user?.logoUrl;
-          if (direct && typeof direct === 'string' && direct.startsWith('data:')) {
-            console.log('[LOGO] ✅ Logo via /api/auth/session');
-            return direct;
+          const sessData = await res.json();
+          const directLogo = sessData?.user?.logoUrl;
+          if (directLogo && typeof directLogo === 'string' && directLogo.startsWith('data:')) {
+            console.log('[LOGO] ✅ Succès via /api/auth/session');
+            return directLogo;
           }
         }
       } catch {}
 
-      // === Tentative 3 : dernier fallback session brute ===
-      const raw = (session as any)?.user?.logoUrl;
-      if (raw && typeof raw === 'string' && raw.startsWith('data:')) {
-        console.log('[LOGO] ✅ Fallback session brute');
-        return raw;
-      }
+      // === Dernier fallback localStorage (redondant mais sûr) ===
+      try {
+        const stored = localStorage.getItem('boutique_last_logo');
+        if (stored && stored.startsWith('data:')) {
+          console.log('[LOGO] ✅ Fallback localStorage (dernière chance)');
+          return stored;
+        }
+      } catch {}
 
-      console.warn('[LOGO] ❌ Aucun logo data:image trouvé');
+      console.warn('[LOGO] ❌ ÉCHEC TOTAL - Aucun logo data: trouvé');
       return null;
     } catch (e) {
-      console.warn('[LOGO] Erreur getFreshLogo:', e);
+      console.warn('[LOGO] Erreur critique getFreshLogo:', e);
+      // Dernier recours localStorage sync
+      try {
+        const stored = localStorage.getItem('boutique_last_logo');
+        if (stored && stored.startsWith('data:')) return stored;
+      } catch {}
       return getCurrentLogo();
     }
   };
@@ -408,22 +435,70 @@ export default function SalesPage() {
       format: [80, 300],
     });
 
-    // === Toujours relire le logo LE PLUS RÉCENT au moment exact de la génération ===
-    // Priorité: override passé depuis le wrapper (après await update()), puis session courante, puis getCurrentLogo
-    const latestUser = (session?.user as any) || {};
-    const logoFromSession = latestUser.logoUrl || getCurrentLogo() || null;
-    const logo = overrideLogo || logoFromSession || null;
+    // === LOGO LE PLUS FRAIS AU MOMENT EXACT de doc.addImage (AGRESSIF) ===
+    // Ordre strict recommandé : localStorage (sync, prioritaire) → overrideLogo → session → getCurrentLogo()
+    let finalLogo: string | null = null;
+    let logoSource = 'none';
 
-    // DIAGNOSTIC LOG (temporaire pour debug logo sur ticket)
-    console.log('[LOGO DEBUG - TICKET] at exact generation time:', {
+    // 1. localStorage en PREMIER (le plus fiable pour les cas de closure/stale session)
+    try {
+      const stored = localStorage.getItem('boutique_last_logo');
+      if (stored && typeof stored === 'string' && stored.startsWith('data:')) {
+        finalLogo = stored;
+        logoSource = 'localStorage';
+      }
+    } catch (e) {}
+
+    // 2. overrideLogo (passé depuis printTicket après await getFreshLogo)
+    if (!finalLogo && overrideLogo && typeof overrideLogo === 'string' && overrideLogo.startsWith('data:')) {
+      finalLogo = overrideLogo;
+      logoSource = 'override';
+    }
+
+    // 3. Session au moment exact
+    if (!finalLogo) {
+      const sessU = (session?.user as any) || {};
+      const sessLogo = sessU.logoUrl || (session as any)?.user?.logoUrl;
+      if (sessLogo && typeof sessLogo === 'string' && sessLogo.startsWith('data:')) {
+        finalLogo = sessLogo;
+        logoSource = 'session';
+      }
+    }
+
+    // 4. getCurrentLogo()
+    if (!finalLogo) {
+      const cur = getCurrentLogo();
+      if (cur && typeof cur === 'string' && cur.startsWith('data:')) {
+        finalLogo = cur;
+        logoSource = 'getCurrentLogo';
+      }
+    }
+
+    // 5. Dernier recours : re-lecture localeStorage sync
+    if (!finalLogo) {
+      try {
+        const stored = localStorage.getItem('boutique_last_logo');
+        if (stored && stored.startsWith('data:')) {
+          finalLogo = stored;
+          logoSource = 'localStorage-final';
+        }
+      } catch {}
+    }
+
+    // DIAGNOSTIC LOG RICHE au moment exact de la génération (avant addImage)
+    console.log('[LOGO DEBUG - TICKET] at exact generation time (BEFORE addImage):', {
+      source: logoSource,
       hasOverride: !!overrideLogo,
-      hasFromSession: !!logoFromSession,
-      logoPrefix: logo ? logo.substring(0, 40) : null,
-      logoLength: logo ? logo.length : 0,
-      startsWithData: logo ? logo.startsWith('data:') : false,
-      sessionUserLogo: (session?.user as any)?.logoUrl ? 'present' : 'absent'
+      overrideValid: overrideLogo ? overrideLogo.startsWith('data:') : false,
+      logoPrefix: finalLogo ? finalLogo.substring(0, 50) : null,
+      logoLength: finalLogo ? finalLogo.length : 0,
+      startsWithData: finalLogo ? finalLogo.startsWith('data:') : false,
+      sessionUserLogoPresent: !!(session?.user as any)?.logoUrl,
+      sessionUserLogoPrefix: (session?.user as any)?.logoUrl ? String((session?.user as any).logoUrl).substring(0, 30) : null,
+      localStoragePresent: !!localStorage.getItem('boutique_last_logo'),
     });
 
+    const latestUser = (session?.user as any) || {};
     const shopName = latestUser.shopName || session?.user?.shopName || "Ma Boutique";
     const shopPhone = latestUser.phone || session?.user?.phone || "";
     const saleDate = new Date(sale.createdAt);
@@ -440,15 +515,35 @@ export default function SalesPage() {
       doc.line(4, yy, 76, yy);
     };
 
-    // Header (80mm) - logo is base64 (data:image/...;base64,...)
+    // === HEADER LOGO - TRÈS ROBUSTE ===
     let logoAdded = false;
-    if (logo && typeof logo === 'string' && logo.startsWith('data:')) {
+
+    if (finalLogo && typeof finalLogo === 'string' && finalLogo.startsWith('data:')) {
+      // LOG DÉTAILLÉ juste avant addImage
+      const imgFormat = finalLogo.includes('image/jpeg') || finalLogo.includes('image/jpg') ? 'JPEG' : 'PNG';
+      console.log('[LOGO DEBUG - TICKET] RIGHT BEFORE addImage:', {
+        source: logoSource,
+        format: imgFormat,
+        prefix: finalLogo.substring(0, 60),
+        length: finalLogo.length,
+        position: {x:29, y, w:22, h:22}
+      });
+
       try {
-        doc.addImage(logo, "PNG", 29, y, 22, 22);
+        doc.addImage(finalLogo, imgFormat, 29, y, 22, 22);
         logoAdded = true;
         y += 25;
-      } catch (e) {
-        console.warn("Logo addImage failed on ticket:", e);
+        console.log('[LOGO] ✅ Ticket: logo ajouté avec succès (source=' + logoSource + ', format=' + imgFormat + ')');
+      } catch (e: any) {
+        console.warn('[LOGO DEBUG - TICKET] addImage FAILED (format ' + imgFormat + '):', e?.message);
+        try { 
+          doc.addImage(finalLogo, "PNG", 29, y, 22, 22); 
+          logoAdded = true; 
+          y += 25; 
+          console.log('[LOGO] ✅ Ticket: logo ajouté en fallback PNG');
+        } catch (e2: any) {
+          console.error('[LOGO DEBUG - TICKET] addImage FAILED completely:', e2?.message);
+        }
       }
     }
 
@@ -460,6 +555,7 @@ export default function SalesPage() {
       doc.setFont("helvetica", "bold");
       doc.text(shopName.substring(0, 2).toUpperCase(), 40, y + 12, { align: "center" });
       y += 20;
+      console.log('[LOGO DEBUG - TICKET] No logo used, fallback icon');
     }
 
     doc.setTextColor(0, 0, 0);
@@ -578,22 +674,70 @@ export default function SalesPage() {
       format: "a4",
     });
 
-    // === Toujours relire le logo LE PLUS RÉCENT au moment exact de la génération ===
-    // Priorité: override (passé depuis wrapper après await update), puis session, puis getCurrentLogo
-    const currentUser = session?.user as ExtendedUser | undefined;
-    const logoFromSession = getCurrentLogo() || currentUser?.logoUrl || null;
-    const logo = overrideLogo || logoFromSession || null;
+    // === LOGO LE PLUS FRAIS AU MOMENT EXACT de doc.addImage (AGRESSIF, localStorage FIRST) ===
+    // Ordre strict : localStorage → overrideLogo → session → getCurrentLogo()
+    let finalLogo: string | null = null;
+    let logoSource = 'none';
 
-    // DIAGNOSTIC LOG (temporaire pour debug logo sur facture A4)
-    console.log('[LOGO DEBUG - A4] at exact generation time:', {
+    // 1. localStorage en PREMIER (absolu, comme demandé)
+    try {
+      const stored = localStorage.getItem('boutique_last_logo');
+      if (stored && typeof stored === 'string' && stored.startsWith('data:')) {
+        finalLogo = stored;
+        logoSource = 'localStorage';
+      }
+    } catch (e) {}
+
+    // 2. overrideLogo (passé depuis downloadTicket après await getFreshLogo)
+    if (!finalLogo && overrideLogo && typeof overrideLogo === 'string' && overrideLogo.startsWith('data:')) {
+      finalLogo = overrideLogo;
+      logoSource = 'override';
+    }
+
+    // 3. Session au moment exact
+    if (!finalLogo) {
+      const sessU = (session?.user as any) || {};
+      const sessLogo = sessU.logoUrl || (session as any)?.user?.logoUrl;
+      if (sessLogo && typeof sessLogo === 'string' && sessLogo.startsWith('data:')) {
+        finalLogo = sessLogo;
+        logoSource = 'session';
+      }
+    }
+
+    // 4. getCurrentLogo()
+    if (!finalLogo) {
+      const cur = getCurrentLogo();
+      if (cur && typeof cur === 'string' && cur.startsWith('data:')) {
+        finalLogo = cur;
+        logoSource = 'getCurrentLogo';
+      }
+    }
+
+    // 5. Dernier recours localStorage
+    if (!finalLogo) {
+      try {
+        const stored = localStorage.getItem('boutique_last_logo');
+        if (stored && stored.startsWith('data:')) {
+          finalLogo = stored;
+          logoSource = 'localStorage-final';
+        }
+      } catch {}
+    }
+
+    // DIAGNOSTIC LOG RICHE au moment exact de la génération (avant addImage)
+    console.log('[LOGO DEBUG - A4] at exact generation time (BEFORE addImage):', {
+      source: logoSource,
       hasOverride: !!overrideLogo,
-      hasFromSession: !!logoFromSession,
-      logoPrefix: logo ? logo.substring(0, 40) : null,
-      logoLength: logo ? logo.length : 0,
-      startsWithData: logo ? logo.startsWith('data:') : false,
-      sessionUserLogo: (session?.user as any)?.logoUrl ? 'present' : 'absent'
+      overrideValid: overrideLogo ? overrideLogo.startsWith('data:') : false,
+      logoPrefix: finalLogo ? finalLogo.substring(0, 50) : null,
+      logoLength: finalLogo ? finalLogo.length : 0,
+      startsWithData: finalLogo ? finalLogo.startsWith('data:') : false,
+      sessionUserLogoPresent: !!(session?.user as any)?.logoUrl,
+      sessionUserLogoPrefix: (session?.user as any)?.logoUrl ? String((session?.user as any).logoUrl).substring(0, 30) : null,
+      localStoragePresent: !!localStorage.getItem('boutique_last_logo'),
     });
 
+    const currentUser = session?.user as ExtendedUser | undefined;
     const shopName = currentUser?.shopName || session?.user?.shopName || "Ma Boutique";
     const shopPhone = currentUser?.phone || session?.user?.phone || "";
     const saleDate = new Date(sale.createdAt);
@@ -610,13 +754,35 @@ export default function SalesPage() {
     let y = 15;
 
     // Header with per-shop logo (base64 data URL)
-    if (logo && typeof logo === 'string' && logo.startsWith('data:')) {
+    if (finalLogo && typeof finalLogo === 'string' && finalLogo.startsWith('data:')) {
+      const imgFormat = finalLogo.includes('image/jpeg') || finalLogo.includes('image/jpg') ? 'JPEG' : 'PNG';
+
+      // LOG DÉTAILLÉ juste avant addImage
+      console.log('[LOGO DEBUG - A4] RIGHT BEFORE addImage:', {
+        source: logoSource,
+        format: imgFormat,
+        prefix: finalLogo.substring(0, 60),
+        length: finalLogo.length,
+        position: {x:75, y: y-5, w:60, h:25}
+      });
+
       try {
-        doc.addImage(logo, "PNG", 75, y - 5, 60, 25);
+        doc.addImage(finalLogo, imgFormat, 75, y - 5, 60, 25);
         y += 28;
-      } catch (e) {
-        console.warn("Logo addImage failed on A4 invoice:", e);
+        console.log('[LOGO] ✅ A4: image ajoutée avec succès (source=' + logoSource + ', format=' + imgFormat + ')');
+      } catch (e: any) {
+        console.warn('[LOGO DEBUG - A4] addImage FAILED (format ' + imgFormat + '):', e?.message);
+        // Dernier essai avec PNG
+        try {
+          doc.addImage(finalLogo, "PNG", 75, y - 5, 60, 25);
+          y += 28;
+          console.log('[LOGO] ✅ A4: image ajoutée en fallback PNG');
+        } catch (e2: any) {
+          console.error('[LOGO DEBUG - A4] addImage FAILED completely:', e2?.message);
+        }
       }
+    } else {
+      console.log('[LOGO DEBUG - A4] No valid logo at addImage time (source=' + logoSource + ')');
     }
 
     doc.setFontSize(22);

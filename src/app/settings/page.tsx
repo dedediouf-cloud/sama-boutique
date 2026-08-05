@@ -369,21 +369,29 @@ export default function SettingsPage() {
                             setLogoFile(null);
                             setLogoPreview(null);
 
-                            // Force refresh de la session NextAuth (très important pour que le logo apparaisse immédiatement sur les factures)
+                            // === SAUVEGARDE ROBUSTE LOGO (localStorage EN PREMIER, comme demandé) ===
                             try {
-                              await update();
-                              // Attendre un peu que le token JWT soit mis à jour côté client
-                              await new Promise(r => setTimeout(r, 800));
+                              localStorage.setItem('boutique_last_logo', data.logoUrl);
+                              console.log('[LOGO SETTINGS] ✅ localStorage.setItem boutique_last_logo (length:', data.logoUrl.length, ')');
                             } catch (e) {
-                              console.warn("Session update warning:", e);
+                              console.warn('[LOGO SETTINGS] localStorage failed:', e);
                             }
 
-                            alert("✅ Logo mis à jour avec succès ! Il apparaîtra sur les prochains tickets et factures.\n\n→ Rafraîchis la page (F5) sur la page Ventes/Caisse pour voir le logo sur les factures.");
-                            
-                            // Recharge complète pour être sûr que tout est à jour
+                            // Force refresh de la session NextAuth avec le logoUrl (important pour NextAuth)
+                            try {
+                              await update({ user: { logoUrl: data.logoUrl } });
+                              await new Promise(r => setTimeout(r, 1200));
+                              console.log('[LOGO SETTINGS] ✅ Session update({logoUrl}) effectué');
+                            } catch (e) {
+                              console.warn("[LOGO SETTINGS] Session update warning:", e);
+                            }
+
+                            alert("✅ Logo mis à jour avec succès !\n\nIl apparaîtra sur les tickets et factures.\n\n→ IMPORTANT : Allez sur la page Ventes et rechargez complètement (Ctrl+Shift+R ou F5) pour synchroniser.");
+
+                            // Recharge complète (recommandé pour vider les closures React)
                             setTimeout(() => {
                               window.location.reload();
-                            }, 900);
+                            }, 1500);
                           } else {
                             // === AFFICHAGE DÉTAILLÉ DE L'ERREUR (amélioré pour v2026-08-04-base64-raw) ===
                             let msg = data.error || "Erreur lors de l'upload du logo";
