@@ -701,51 +701,6 @@ export default function SalesPage() {
   // Alias pour compatibilité
   const generateInvoice = downloadTicket;
 
-  // === FILTRAGE STABLE (useMemo) ===
-  const filteredProducts = useMemo(() =>
-    products.filter((p) =>
-      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (p.category && p.category.toLowerCase().includes(searchTerm.toLowerCase()))
-    ),
-  [products, searchTerm]);
-
-  // === Carte pour vérifier rapidement si un produit est dans le panier (optimisation) ===
-  const cartMap = useMemo(() => {
-    const map: Record<string, boolean> = {};
-    cart.forEach(item => { map[item.productId] = true; });
-    return map;
-  }, [cart]);
-
-  // === RENDUS MÉMORISÉS pour éviter le vacillement ===
-  const productsList = useMemo(() => (
-    Array.isArray(filteredProducts) && filteredProducts.length > 0 ? (
-      filteredProducts.map((p, index) => (
-        <button
-          key={p.id}
-          onClick={() => addToCart(p.id)}
-          disabled={p.quantity <= 0}
-          className="p-2.5 sm:p-3.5 rounded-xl border border-[#D4AF37]/20 bg-[#FDF6E3]/30 text-left hover:bg-[#D4AF37]/10 hover:border-[#D4AF37]/40 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 group active:scale-[0.985] touch-manipulation min-h-[92px]"
-        >
-          <div className="flex items-start gap-2">
-            <span className="text-lg sm:text-xl mt-0.5">{productIcons[index % productIcons.length]}</span>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium text-[#3D2B1F] truncate text-[13px] sm:text-sm leading-tight">{p.name}</p>
-              <p className="text-xs sm:text-sm text-[#B87333] font-semibold mt-0.5">{formatPrice(p.price)} FCFA</p>
-              <p className="text-[10px] text-[#5C4033]/60">Stock: {p.quantity}</p>
-            </div>
-          </div>
-          {cartMap[p.id] && (
-            <p className="text-[10px] text-[#D4AF37] font-medium mt-1 flex items-center gap-1">
-              <CheckCircle size={11} /> Dans le panier
-            </p>
-          )}
-        </button>
-      ))
-    ) : (
-      <p className="text-[#5C4033]/60 col-span-2 text-center py-8">Aucun produit disponible</p>
-    )
-  ), [filteredProducts, addToCart, cartMap]);
-
   return (
     <ProtectedRoute>
       <div className="space-y-8 max-w-7xl mx-auto">
