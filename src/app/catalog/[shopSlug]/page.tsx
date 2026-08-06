@@ -8,7 +8,20 @@ import {
   ShoppingCart, Plus, Minus, Trash2, Send 
 } from "lucide-react";
 
-const productIcons = ["✨", "🎁", "💎", "🛍️", "🌟", "🏺", "🕯️", "🧴", "👜", "🧣"];
+// Nice fallback placeholder when no real photo is available
+const ProductPlaceholder = ({ name }: { name: string }) => (
+  <div className="flex flex-col items-center justify-center h-full w-full bg-gradient-to-br from-[#FDF6E3] via-[#F8F1E3] to-[#F5EDE0] text-[#B87333]/60">
+    <div className="w-14 h-14 rounded-2xl bg-white/80 flex items-center justify-center mb-1.5 shadow-sm ring-1 ring-[#D4AF37]/20">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2.5" ry="2.5"/>
+        <circle cx="8.5" cy="8.5" r="1.75"/>
+        <path d="M21 15l-5-5L5 21"/>
+      </svg>
+    </div>
+    <span className="text-[10px] font-medium tracking-[0.5px] text-center px-1 leading-tight">{name.length > 22 ? name.slice(0,20) + "…" : name}</span>
+    <span className="text-[9px] mt-0.5 text-[#B87333]/40">Photo non disponible</span>
+  </div>
+);
 
 interface CartItem {
   id: string;
@@ -297,7 +310,7 @@ export default function CatalogPage() {
                 key={product.id}
                 className="group bg-white border border-[#D4AF37]/10 rounded-3xl overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col"
               >
-                {/* Image */}
+                {/* Image - REAL PHOTO or nice placeholder */}
                 <div className="relative h-56 bg-[#FDF6E3] overflow-hidden">
                   {product.imageUrl ? (
                     <img
@@ -306,11 +319,7 @@ export default function CatalogPage() {
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
                   ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <span className="text-7xl opacity-70">
-                        {productIcons[index % productIcons.length]}
-                      </span>
-                    </div>
+                    <ProductPlaceholder name={product.name} />
                   )}
                   <div className="absolute top-3 right-3 bg-white/95 px-3 py-1 rounded-full text-sm font-semibold text-[#B87333] shadow">
                     {formatPrice(product.price)} FCFA
