@@ -18,6 +18,29 @@ export async function POST(
 
     const body = await request.json();
 
+    // === Support pour panier complet (plusieurs produits) ===
+    if (body.isCart && Array.isArray(body.items)) {
+      // Créer une réservation groupée
+      const reservation = await prisma.reservation.create({
+        data: {
+          userId: user.id,
+          productName: `Panier (${body.items.length} articles)`,
+          customerName: body.customerName,
+          customerPhone: body.customerPhone,
+          quantity: body.items.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0),
+          message: body.message || 
+            body.items.map((i: any) => `${i.name} × ${i.quantity}`).join(" • "),
+        },
+      });
+
+      return NextResponse.json({ 
+        success: true, 
+        message: "Réservation du panier envoyée avec succès",
+        reservation 
+      }, { status: 201 });
+    }
+
+    // === Réservation produit unique (comportement existant) ===
     const reservation = await prisma.reservation.create({
       data: {
         userId: user.id,
