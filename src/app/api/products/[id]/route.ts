@@ -78,6 +78,7 @@ export async function PATCH(
     if (body.category !== undefined) updateData.category = body.category;
     if (body.imageUrl !== undefined) updateData.imageUrl = body.imageUrl;
     if (body.supplierId !== undefined) updateData.supplierId = body.supplierId || null;
+    if (body.barcode !== undefined) updateData.barcode = body.barcode?.trim() || null;
 
     const updated = await prisma.product.update({
       where: { id },

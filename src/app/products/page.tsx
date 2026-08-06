@@ -29,7 +29,7 @@ export default function ProductsPage() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [form, setForm] = useState({
-    name: "", description: "", price: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "",
+    name: "", description: "", price: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "", barcode: "",
   });
 
   const [restockForm, setRestockForm] = useState({
@@ -38,7 +38,7 @@ export default function ProductsPage() {
 
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [editForm, setEditForm] = useState({
-    name: "", description: "", price: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "",
+    name: "", description: "", price: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "", barcode: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [restocking, setRestocking] = useState(false);
@@ -90,12 +90,13 @@ export default function ProductsPage() {
       category: product.category || "",
       imageUrl: product.imageUrl || "",
       supplierId: product.supplierId || "",
+      barcode: product.barcode || "",
     });
   };
 
   const closeEdit = () => {
     setEditingProduct(null);
-    setEditForm({ name: "", description: "", price: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "" });
+    setEditForm({ name: "", description: "", price: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "", barcode: "" });
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
@@ -125,6 +126,7 @@ export default function ProductsPage() {
           category: editForm.category,
           imageUrl: editForm.imageUrl || null,
           supplierId: editForm.supplierId || null,
+          barcode: editForm.barcode?.trim() || null,
         }),
       });
 
@@ -166,11 +168,12 @@ export default function ProductsPage() {
           lowStock: parseInt(form.lowStock) || 5,
           imageUrl: form.imageUrl || null,
           supplierId: form.supplierId || null,
+          barcode: form.barcode?.trim() || null,
         }),
       });
 
       if (res.ok) {
-        setForm({ name: "", description: "", price: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "" });
+        setForm({ name: "", description: "", price: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "", barcode: "" });
         setShowForm(false);
         await fetchProducts();
         alert("Produit enregistré avec succès !");
@@ -426,6 +429,11 @@ export default function ProductsPage() {
           💡 Pour les accents : Enregistrez en <strong>CSV UTF-8</strong>
         </div>
 
+        <div className="bg-[#FDF6E3]/60 border border-[#D4AF37]/20 rounded-xl p-3 text-sm text-[#5C4033]">
+          📦 <strong>Pour utiliser le scanner en caisse :</strong> Ajoutez ou modifiez un produit et remplissez le champ <strong>« Code-barres »</strong> (ex: 5901234123457). 
+          Ce code sera utilisé automatiquement quand vous scannerez le produit à la caisse.
+        </div>
+
         {/* Create form */}
         {showForm && (
           <div className="glass p-5 sm:p-6 rounded-2xl">
@@ -440,6 +448,18 @@ export default function ProductsPage() {
                   <option value="">Aucun fournisseur</option>
                   {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
+
+                {/* === CHAMP CODE-BARRES POUR SCANNER === */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-[#5C4033] mb-1">Code-barres (pour scanner USB/Bluetooth)</label>
+                  <input 
+                    placeholder="Ex: 5901234123457 (EAN-13) ou scannez ici" 
+                    value={form.barcode} 
+                    onChange={(e) => setForm({ ...form, barcode: e.target.value })} 
+                    className="input-warm p-3 rounded-xl text-sm sm:text-base w-full font-mono tracking-[1.5px]" 
+                  />
+                  <p className="text-[10px] text-[#5C4033]/50 mt-0.5">Ce code sera utilisé pour ajouter le produit automatiquement avec le scanner en caisse.</p>
+                </div>
               </div>
 
               <div>
@@ -521,6 +541,11 @@ export default function ProductsPage() {
                       </div>
                       {p.category && <p className="text-[9px] text-[#5C4033]/70 truncate">{p.category}</p>}
                       {p.supplier && <p className="text-[8px] text-[#B87333] truncate">Fourn. : {p.supplier.name}</p>}
+                      {p.barcode && (
+                        <p className="text-[9px] font-mono text-[#B87333]/80 mt-0.5 tracking-[1px]">
+                          📦 {p.barcode}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -640,6 +665,17 @@ export default function ProductsPage() {
                     <option value="">Aucun fournisseur</option>
                     {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
+
+                  {/* CHAMP CODE-BARRES DANS LE MODAL MODIFIER */}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-[#5C4033] mb-1">Code-barres (pour scanner)</label>
+                    <input 
+                      placeholder="5901234123457" 
+                      value={editForm.barcode} 
+                      onChange={(e) => setEditForm({ ...editForm, barcode: e.target.value })} 
+                      className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20 font-mono tracking-[1.5px]" 
+                    />
+                  </div>
                 </div>
 
                 <div>
