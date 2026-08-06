@@ -15,6 +15,7 @@ import {
   Upload,
   Download,
   Trash,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export default function ProductsPage() {
@@ -44,6 +45,7 @@ export default function ProductsPage() {
   const [restocking, setRestocking] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const fetchProducts = async () => {
     try {
@@ -462,25 +464,78 @@ export default function ProductsPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-[#5C4033] mb-1">Photo (URL)</label>
-                <input 
-                  placeholder="https://exemple.com/photo.jpg" 
-                  value={form.imageUrl} 
-                  onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} 
-                  className="input-warm p-3 rounded-xl text-sm sm:text-base w-full" 
-                />
-                {form.imageUrl && (
-                  <div className="mt-2">
-                    <img 
-                      src={form.imageUrl} 
-                      alt="Aperçu" 
-                      className="w-16 h-16 object-cover rounded-lg border border-[#D4AF37]/20" 
-                      onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} 
-                    />
+                <div>
+                  <label className="block text-sm font-medium text-[#5C4033] mb-1">Photo du produit</label>
+                  
+                  {/* NEW: Upload depuis ordinateur */}
+                  <div className="flex gap-2 mb-2">
+                    <label className="flex-1 cursor-pointer flex items-center justify-center gap-2 px-3 py-2.5 border border-[#D4AF37]/40 rounded-xl text-sm hover:bg-[#FDF6E3]/50 active:scale-[0.985] transition-all">
+                      <ImageIcon size={16} />
+                      {uploadingImage ? "Upload..." : "Importer depuis mon ordinateur"}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        disabled={uploadingImage || creating}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          
+                          setUploadingImage(true);
+                          const formData = new FormData();
+                          formData.append("image", file);
+                          
+                          try {
+                            const res = await fetch("/api/upload/product", {
+                              method: "POST",
+                              body: formData,
+                            });
+                            const data = await res.json();
+                            
+                            if (data.imageUrl) {
+                              setForm({ ...form, imageUrl: data.imageUrl });
+                              alert("✅ Photo importée avec succès !");
+                            } else {
+                              alert(data.error || "Erreur lors de l'upload");
+                            }
+                          } catch (err) {
+                            alert("Erreur réseau lors de l'upload de la photo");
+                          } finally {
+                            setUploadingImage(false);
+                            e.target.value = "";
+                          }
+                        }}
+                      />
+                    </label>
                   </div>
-                )}
-              </div>
+
+                  {/* URL option (kept for flexibility) */}
+                  <input 
+                    placeholder="Ou collez une URL (https://...)" 
+                    value={form.imageUrl} 
+                    onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} 
+                    className="input-warm p-3 rounded-xl text-sm sm:text-base w-full" 
+                  />
+                  
+                  {form.imageUrl && (
+                    <div className="mt-2 flex items-center gap-3">
+                      <img 
+                        src={form.imageUrl} 
+                        alt="Aperçu" 
+                        className="w-16 h-16 object-cover rounded-lg border border-[#D4AF37]/20" 
+                        onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} 
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => setForm({ ...form, imageUrl: "" })}
+                        className="text-xs text-red-500 hover:text-red-600"
+                      >
+                        Supprimer la photo
+                      </button>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-[#5C4033]/60 mt-1">Formats acceptés : JPG, PNG (max ~350 Ko)</p>
+                </div>
 
               <textarea placeholder="Description (optionnel)" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full input-warm p-3 rounded-xl text-sm sm:text-base" rows={2} />
 
@@ -678,17 +733,67 @@ export default function ProductsPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-[#5C4033] mb-1">Photo (URL)</label>
-                  <input placeholder="https://..." value={editForm.imageUrl} onChange={(e) => setEditForm({ ...editForm, imageUrl: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" />
+                {/* PHOTO UPLOAD - MODAL EDIT */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-[#5C4033] mb-1">Photo du produit</label>
+                  
+                  <div className="flex gap-2 mb-2">
+                    <label className="flex-1 cursor-pointer flex items-center justify-center gap-2 px-3 py-2 border border-[#D4AF37]/40 rounded-xl text-xs hover:bg-[#FDF6E3]/50 transition-all">
+                      <ImageIcon size={15} />
+                      {uploadingImage ? "Upload..." : "Importer depuis mon ordinateur"}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        disabled={uploadingImage || savingEdit}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setUploadingImage(true);
+                          const fd = new FormData();
+                          fd.append("image", file);
+                          try {
+                            const res = await fetch("/api/upload/product", { method: "POST", body: fd });
+                            const data = await res.json();
+                            if (data.imageUrl) {
+                              setEditForm({ ...editForm, imageUrl: data.imageUrl });
+                              alert("✅ Photo importée !");
+                            } else {
+                              alert(data.error || "Erreur upload");
+                            }
+                          } catch {
+                            alert("Erreur réseau");
+                          } finally {
+                            setUploadingImage(false);
+                            e.target.value = "";
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <input 
+                    placeholder="Ou URL photo" 
+                    value={editForm.imageUrl} 
+                    onChange={(e) => setEditForm({ ...editForm, imageUrl: e.target.value })} 
+                    className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20 text-sm" 
+                  />
+                  
                   {editForm.imageUrl && (
-                    <div className="mt-2">
+                    <div className="mt-2 flex items-center gap-3">
                       <img 
                         src={editForm.imageUrl} 
                         alt="Aperçu" 
-                        className="w-16 h-16 object-cover rounded-lg border border-[#D4AF37]/20" 
+                        className="w-14 h-14 object-cover rounded-lg border border-[#D4AF37]/20" 
                         onError={(e) => (e.target as HTMLImageElement).style.display = 'none'} 
                       />
+                      <button 
+                        type="button" 
+                        onClick={() => setEditForm({ ...editForm, imageUrl: "" })} 
+                        className="text-xs text-red-500 hover:text-red-600"
+                      >
+                        Supprimer
+                      </button>
                     </div>
                   )}
                 </div>

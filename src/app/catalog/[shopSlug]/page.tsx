@@ -120,6 +120,7 @@ export default function CatalogPage() {
         open: true,
         productId: product.id,
         productName: product.name,
+        unitPrice: product.price,   // <-- send price for single product
         customerName: "",
         customerPhone: "",
         quantity: "1",
@@ -130,7 +131,7 @@ export default function CatalogPage() {
       setReservationForm({
         open: true,
         isCart: true,
-        items: [...cart],
+        items: [...cart],   // cart already has price
         customerName: "",
         customerPhone: "",
         message: "",

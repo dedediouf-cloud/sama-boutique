@@ -20,7 +20,19 @@ export async function POST(
 
     // === Support pour panier complet (plusieurs produits) ===
     if (body.isCart && Array.isArray(body.items)) {
-      // Créer une réservation groupée
+      // Préparer les données détaillées avec prix
+      const itemsWithPrices = body.items.map((i: any) => ({
+        name: i.name,
+        quantity: i.quantity || 1,
+        price: i.price || 0,
+      }));
+
+      const computedTotal = itemsWithPrices.reduce((sum: number, i: any) => 
+        sum + (i.price * i.quantity), 0);
+
+      const itemsData = JSON.stringify(itemsWithPrices);
+
+      // Créer une réservation groupée avec montants
       const reservation = await prisma.reservation.create({
         data: {
           userId: user.id,
@@ -30,7 +42,11 @@ export async function POST(
           quantity: body.items.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0),
           message: body.message || 
             body.items.map((i: any) => `${i.name} × ${i.quantity}`).join(" • "),
-        },
+          // @ts-ignore - new fields added to schema (will be available after prisma db push)
+          total: computedTotal,
+          // @ts-ignore
+          itemsData: itemsData,
+        } as any,
       });
 
       return NextResponse.json({ 
@@ -41,6 +57,9 @@ export async function POST(
     }
 
     // === Réservation produit unique (comportement existant) ===
+    const unitPrice = body.unitPrice || 0;
+    const quantity = body.quantity || 1;
+
     const reservation = await prisma.reservation.create({
       data: {
         userId: user.id,
@@ -48,9 +67,13 @@ export async function POST(
         productName: body.productName,
         customerName: body.customerName,
         customerPhone: body.customerPhone,
-        quantity: body.quantity || 1,
+        quantity: quantity,
         message: body.message,
-      },
+        // @ts-ignore - new schema fields
+        unitPrice: unitPrice,
+        // @ts-ignore
+        total: unitPrice * quantity,
+      } as any,
     });
 
     return NextResponse.json(reservation, { status: 201 });

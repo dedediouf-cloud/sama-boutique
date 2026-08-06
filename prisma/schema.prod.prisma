@@ -268,6 +268,9 @@ model Reservation {
   quantity      Int      @default(1)
   status        String   @default("pending")
   message       String?
+  unitPrice     Float?     // prix unitaire (réservation simple)
+  total         Float?     // montant total
+  itemsData     String?    // JSON pour paniers groupés : [{"name":"...","quantity":2,"price":1500}]
   createdAt     DateTime @default(now())
 
   userId String

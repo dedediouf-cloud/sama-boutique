@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { isAdmin } from "@/lib/roles";
+import { formatPrice } from "@/lib/utils";
 import {
   Bookmark,
   Clock,
@@ -83,16 +84,30 @@ export default function ReservationsPage() {
 
   const pendingCount = reservations.filter((r) => r.status === "pending").length;
 
-  // === Parse reservation to extract product details (supports single + bulk cart) ===
+  // === Parse reservation to extract product details + prices (supports single + bulk cart) ===
   const parseReservationItems = (reservation: any) => {
-    // Bulk reservation from catalog cart
+    // Prefer structured data if available (new format)
+    if (reservation.itemsData) {
+      try {
+        const parsed = JSON.parse(reservation.itemsData);
+        if (Array.isArray(parsed)) {
+          return parsed.map((i: any) => ({
+            name: i.name || "Produit",
+            quantity: i.quantity || 1,
+            price: i.price || 0,
+          }));
+        }
+      } catch (e) {}
+    }
+
+    // Bulk reservation from catalog cart (old format)
     if (reservation.productName?.startsWith("Panier") && reservation.message) {
       const parts = reservation.message.split(" • ").map((part: string) => {
         const match = part.match(/^(.*) × (\d+)$/);
         if (match) {
-          return { name: match[1].trim(), quantity: parseInt(match[2]) };
+          return { name: match[1].trim(), quantity: parseInt(match[2]), price: 0 };
         }
-        return { name: part.trim(), quantity: 1 };
+        return { name: part.trim(), quantity: 1, price: 0 };
       });
       return parts;
     }
@@ -100,16 +115,23 @@ export default function ReservationsPage() {
     // Single product reservation
     return [{
       name: reservation.productName,
-      quantity: reservation.quantity || 1
+      quantity: reservation.quantity || 1,
+      price: reservation.unitPrice || 0,
     }];
   };
 
   const openDetail = (reservation: any) => {
     const items = parseReservationItems(reservation);
+    
+    // Compute total if not already stored
+    const computedTotal = items.reduce((sum: number, i: any) => 
+      sum + ((i.price || 0) * (i.quantity || 1)), 0);
+
     setDetailModal({
       ...reservation,
       parsedItems: items,
       totalQty: items.reduce((sum: number, i: any) => sum + (i.quantity || 1), 0),
+      computedTotal: reservation.total || computedTotal,
     });
   };
 
@@ -284,17 +306,48 @@ export default function ReservationsPage() {
                 </div>
 
                 <div className="space-y-2 max-h-[210px] overflow-auto pr-1">
-                  {detailModal.parsedItems?.map((item: any, idx: number) => (
-                    <div key={idx} className="flex items-center justify-between bg-[#FDF6E3]/60 border border-[#D4AF37]/20 rounded-2xl px-4 py-3">
-                      <div className="font-medium text-[#3D2B1F] flex-1 pr-3 truncate">
-                        {item.name}
+                  {detailModal.parsedItems?.map((item: any, idx: number) => {
+                    const itemTotal = (item.price || 0) * (item.quantity || 1);
+                    return (
+                      <div key={idx} className="bg-[#FDF6E3]/60 border border-[#D4AF37]/20 rounded-2xl px-4 py-3">
+                        <div className="flex items-center justify-between">
+                          <div className="font-medium text-[#3D2B1F] flex-1 pr-3 truncate">
+                            {item.name}
+                          </div>
+                          <div className="text-sm font-semibold text-[#B87333] flex items-center gap-1 flex-shrink-0">
+                            × {item.quantity}
+                          </div>
+                        </div>
+                        {(item.price || 0) > 0 && (
+                          <div className="mt-1 flex justify-between text-xs text-[#5C4033]">
+                            <span>{formatPrice(item.price)} FCFA × {item.quantity}</span>
+                            <span className="font-semibold text-[#B87333]">{formatPrice(itemTotal)} FCFA</span>
+                          </div>
+                        )}
                       </div>
-                      <div className="text-sm font-semibold text-[#B87333] flex items-center gap-1 flex-shrink-0">
-                        × {item.quantity}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+
+                {/* TOTAL AMOUNT */}
+                {(detailModal.computedTotal || detailModal.total || 0) > 0 && (
+                  <div className="mt-3 pt-3 border-t flex justify-between items-center bg-white rounded-xl px-4 py-2.5 border border-[#D4AF37]/30">
+                    <span className="font-medium text-[#3D2B1F]">Total de la réservation</span>
+                    <span className="font-bold text-lg text-[#B87333]">
+                      {formatPrice(detailModal.computedTotal || detailModal.total)} FCFA
+                    </span>
+                  </div>
+                )}
+
+                {/* Fallback: show total if no price data but old reservation had price info */}
+                {!(detailModal.computedTotal || detailModal.total) && detailModal.unitPrice && (
+                  <div className="mt-3 pt-3 border-t flex justify-between items-center bg-white rounded-xl px-4 py-2.5 border border-[#D4AF37]/30">
+                    <span className="font-medium text-[#3D2B1F]">Total estimé</span>
+                    <span className="font-bold text-lg text-[#B87333]">
+                      {formatPrice(detailModal.unitPrice * (detailModal.quantity || 1))} FCFA
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Message */}
