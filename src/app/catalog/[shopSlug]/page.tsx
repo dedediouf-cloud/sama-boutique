@@ -336,7 +336,14 @@ export default function CatalogPage() {
 
                     <div className="grid grid-cols-2 gap-2 text-sm">
                       <button
-                        onClick={() => openWhatsApp(product)}
+                        onClick={() => {
+                          const phone = shop?.phone?.replace(/[^\d+]/g, "");
+                          if (!phone) return;
+                          const text = encodeURIComponent(
+                            `Bonjour, je suis intéressé(e) par : ${product.name} (${formatPrice(product.price)} FCFA). Est-il disponible ?`
+                          );
+                          window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
+                        }}
                         className="py-2.5 rounded-xl bg-[#25D366] text-white flex items-center justify-center gap-1.5 hover:bg-[#1fa855]"
                       >
                         <MessageCircle size={15} /> WhatsApp
