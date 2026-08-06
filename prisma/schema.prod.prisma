@@ -15,6 +15,7 @@ model User {
   shopName  String
   shopSlug  String   @unique
   phone     String?
+  logoUrl   String?
   isBlocked Boolean  @default(false)
   subscriptionAmount Float    @default(0)
   subscriptionStatus String   @default("pending")
@@ -82,6 +83,7 @@ model Product {
   lowStock    Int      @default(5)
   category    String?
   imageUrl    String?
+  barcode     String?  @unique   // Code-barres EAN-13 / QR pour scan
   supplierId  String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

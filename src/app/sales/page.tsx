@@ -57,6 +57,8 @@ import {
 
   ChevronUp,
 
+  Barcode,
+
 } from "lucide-react";
 
 const paymentLabels: Record<string, string> = {
@@ -122,6 +124,12 @@ export default function SalesPage() {
   const [cashSession, setCashSession] = useState<any>(null);
 
   const [showCashModal, setShowCashModal] = useState(false);
+
+  // === CHAMP SCAN CODE-BARRES DÉDIÉ (TOUJOURS VISIBLE dans la section Caisse) ===
+  const [barcodeInput, setBarcodeInput] = useState("");
+
+  // === FEEDBACK SCAN (succès / erreur) ===
+  const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // === LECTURE ROBUSTE DU LOGO (base64) - JAMAIS depuis session (cause 494) ===
 
@@ -386,6 +394,40 @@ export default function SalesPage() {
     });
 
   }, []);
+
+  // === HANDLER SCAN CODE-BARRES USB / BLUETOOTH ===
+  // Champ DÉDIÉ et TOUJOURS VISIBLE. Scanner = clavier (code + Entrée).
+  // Lookup EXACT sur `barcode` du produit.
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    const cleanCode = barcode.trim();
+    if (!cleanCode) return;
+
+    const foundProduct = products.find(
+      (p: any) => p.barcode && p.barcode.trim().toUpperCase() === cleanCode.toUpperCase()
+    );
+
+    if (!foundProduct) {
+      setScanFeedback({ type: 'error', message: `Produit introuvable pour le code : ${cleanCode}` });
+      setTimeout(() => setScanFeedback(null), 2800);
+      return;
+    }
+
+    if (foundProduct.quantity <= 0) {
+      setScanFeedback({ type: 'error', message: `Stock épuisé : ${foundProduct.name}` });
+      setTimeout(() => setScanFeedback(null), 2400);
+      return;
+    }
+
+    addToCart(foundProduct.id);
+
+    setScanFeedback({ 
+      type: 'success', 
+      message: `✓ ${foundProduct.name} ajouté` 
+    });
+    setTimeout(() => setScanFeedback(null), 1600);
+
+    setBarcodeInput("");
+  }, [products, addToCart]);
 
   const verifyPayment = useCallback(async (saleId: string) => {
 
@@ -1773,6 +1815,43 @@ export default function SalesPage() {
 
                 </h2>
 
+              </div>
+
+              {/* === CHAMP SCAN CODE-BARRES DÉDIÉ - TOUJOURS VISIBLE === */}
+              <div className="mb-4 p-3 rounded-xl bg-[#FDF6E3]/70 border border-[#D4AF37]/25">
+                <label className="block text-sm font-medium text-[#5C4033] mb-1.5 flex items-center gap-1.5">
+                  <Barcode size={15} className="text-[#B87333]" /> 
+                  Scanner code-barres (USB/Bluetooth)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={barcodeInput}
+                    onChange={(e) => setBarcodeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleBarcodeScan(barcodeInput);
+                      }
+                    }}
+                    placeholder="Cliquez ici puis scannez le code..."
+                    className="flex-1 px-4 py-2.5 rounded-xl input-warm text-[#3D2B1F] text-sm font-mono tracking-[1px]"
+                    autoComplete="off"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleBarcodeScan(barcodeInput)}
+                    className="px-4 py-2.5 rounded-xl bg-[#B87333] hover:bg-[#8B5A2B] text-white font-medium text-sm flex items-center gap-1.5 transition-colors active:scale-[0.98]"
+                  >
+                    <Barcode size={16} /> Ajouter
+                  </button>
+                </div>
+                {scanFeedback && (
+                  <div className={`mt-2 text-xs px-3 py-1 rounded-lg font-medium ${scanFeedback.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    {scanFeedback.message}
+                  </div>
+                )}
+                <p className="text-[10px] text-[#5C4033]/55 mt-1">Scannez (code + Entrée) ou tapez + Entrée.</p>
               </div>
 
               <div className="space-y-4 mb-5">
