@@ -90,7 +90,7 @@ export async function POST(request: Request) {
     const finalTotal = total - discount;
     const earnedFidelityPoints = Math.floor(finalTotal / 1000);
 
-    let paymentStatus = method === "cash" ? "paid" : "pending";
+    let paymentStatus = (method === "cash" || method === "qr_merchant" || method === "cash_on_delivery") ? "paid" : "pending";
     let paymentRef = null;
 
     if (method === "orange_money" || method === "wave") {

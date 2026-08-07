@@ -65,9 +65,13 @@ const paymentLabels: Record<string, string> = {
 
   cash: "Espèces",
 
-  orange_money: "Orange Money",
+  qr_merchant: "Paiement marchand (QR Code OM / Wave)",
 
-  wave: "Wave",
+  cash_on_delivery: "Paiement à la livraison",
+
+  orange_money: "Orange Money (API)",
+
+  wave: "Wave (API)",
 
 };
 
@@ -1944,9 +1948,13 @@ export default function SalesPage() {
 
                     <option value="cash">Espèces</option>
 
-                    <option value="orange_money">Orange Money</option>
+                    <option value="qr_merchant">Paiement marchand (QR Code OM / Wave)</option>
 
-                    <option value="wave">Wave</option>
+                    <option value="cash_on_delivery">Paiement à la livraison</option>
+
+                    <option value="orange_money">Orange Money (API)</option>
+
+                    <option value="wave">Wave (API)</option>
 
                   </select>
 
@@ -1979,6 +1987,24 @@ export default function SalesPage() {
                     />
 
                     <p className="text-xs text-[#5C4033]/60 mt-1.5">Le client recevra une demande de paiement sur ce numéro.</p>
+
+                  </div>
+
+                )}
+
+                {(paymentMethod === "qr_merchant" || paymentMethod === "cash_on_delivery") && (
+
+                  <div className="p-3 bg-[#FDF6E3]/70 border border-[#D4AF37]/30 rounded-xl text-sm text-[#5C4033]">
+
+                    {paymentMethod === "qr_merchant" ? (
+
+                      <>💡 <strong>Paiement marchand :</strong> Le client scanne votre QR Code OM/Wave existant pour payer directement. Aucun téléphone requis.</>
+
+                    ) : (
+
+                      <>🚚 <strong>Paiement à la livraison :</strong> Le client paiera en espèces ou par QR lors de la livraison ou du retrait. Aucun téléphone requis.</>
+
+                    )}
 
                   </div>
 
@@ -2157,15 +2183,14 @@ export default function SalesPage() {
                         !cashSession 
 
                           ? "Ouvrir la caisse d'abord"
-
                           : paymentMethod === "cash"
-
                           ? "Valider la vente + Imprimer"
-
+                          : paymentMethod === "qr_merchant"
+                          ? "Valider + Paiement marchand QR"
+                          : paymentMethod === "cash_on_delivery"
+                          ? "Valider + Paiement à la livraison"
                           : paymentMethod === "orange_money"
-
                           ? "Valider + Payer Orange Money"
-
                           : "Valider + Payer Wave"
 
                       )}
@@ -2314,7 +2339,7 @@ export default function SalesPage() {
 
                               </button>
 
-                              {s.paymentMethod !== "cash" && s.paymentStatus === "pending" && (
+                              {(s.paymentMethod === "orange_money" || s.paymentMethod === "wave") && s.paymentStatus === "pending" && (
 
                                 <button 
 
