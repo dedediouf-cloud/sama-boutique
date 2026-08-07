@@ -787,6 +787,61 @@ export default function SalesPage() {
 
   };
 
+  // === CLÔTURE DE CAISSE ROBUSTE (conforme instructions) ===
+  // - Utilise safe parsing (res.text + JSON.parse)
+  // - setCashSession(null) + await fetchCurrentCashSession() + fetchSales()
+  // - Message avec différence (excédent / manquant / 0)
+  const closeCurrentCashSession = useCallback(async () => {
+    if (!cashSession?.id) {
+      alert("Aucune session de caisse ouverte.");
+      return;
+    }
+
+    const closingStr = prompt("Montant de clôture (FCFA) :");
+    if (!closingStr) return;
+
+    const closingAmount = parseFloat(closingStr);
+    if (isNaN(closingAmount) || closingAmount < 0) {
+      alert("Montant de clôture invalide");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/cash-sessions/${cashSession.id}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ closingAmount }),
+      });
+
+      const text = await res.text().catch(() => "");
+      let data: any = {};
+      if (text && text.trim()) {
+        try { data = JSON.parse(text); } catch {}
+      }
+
+      if (res.ok) {
+        const diff = typeof data.difference === "number" ? data.difference : null;
+        let msg = "✅ Caisse clôturée avec succès";
+        if (diff !== null) {
+          if (diff === 0) msg += "\nÉcart : 0 FCFA (parfait)";
+          else if (diff > 0) msg += `\nExcédent : +${formatPrice(diff)} FCFA`;
+          else msg += `\nManquant : ${formatPrice(Math.abs(diff))} FCFA`;
+        }
+        alert(msg);
+
+        // === MISE À JOUR IMMÉDIATE (instructions) ===
+        setCashSession(null);
+        await fetchCurrentCashSession();
+        fetchSales().catch(() => {});
+      } else {
+        alert("Erreur : " + (data.error || text || "Clôture échouée"));
+      }
+    } catch (e: any) {
+      console.error("Erreur clôture caisse:", e);
+      alert("Erreur réseau lors de la clôture. Vérifie la console (F12).");
+    }
+  }, [cashSession, fetchCurrentCashSession, fetchSales]);
+
   // === TICKET THERMIQUE 80mm (pour impression directe) ===
 
   const generateTicketPDF = (sale: any, autoPrint: boolean = false, overrideLogo: string | null = null) => {
@@ -1696,55 +1751,13 @@ export default function SalesPage() {
               </button>
 
             ) : (
-
               <button
-
-                onClick={async () => {
-
-                  const closing = prompt("Montant de clôture (FCFA) :");
-
-                  if (!closing) return;
-
-                  try {
-
-                    const res = await fetch(`/api/cash-sessions/${cashSession.id}/close`, {
-
-                      method: "POST",
-
-                      headers: { "Content-Type": "application/json" },
-
-                      body: JSON.stringify({ closingAmount: parseFloat(closing) }),
-
-                    });
-
-                    if (res.ok) {
-
-                      alert("Caisse clôturée avec succès");
-
-                      setCashSession(null);
-
-                      fetchSales();
-
-                    }
-
-                  } catch (e) {
-
-                    alert("Erreur lors de la clôture");
-
-                  }
-
-                }}
-
+                onClick={closeCurrentCashSession}
                 className="px-4 py-1.5 text-sm rounded-xl border border-[#B87333] text-[#B87333] hover:bg-[#B87333]/10 transition-colors"
-
               >
-
                 Clôturer la caisse
-
               </button>
-
             )}
-
           </div>
 
         </div>

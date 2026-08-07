@@ -148,6 +148,12 @@ export default function CashHistoryPage() {
 
           <div className="flex gap-2 items-center">
             <button
+              onClick={fetchHistory}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[#B87333]/30 text-[#B87333] hover:bg-[#B87333]/5 text-sm font-medium"
+            >
+              🔄 Rafraîchir
+            </button>
+            <button
               onClick={exportCSV}
               disabled={sessions.length === 0}
               className="flex items-center gap-2 px-4 py-2 rounded-xl border border-[#B87333]/30 text-[#B87333] hover:bg-[#B87333]/5 text-sm font-medium disabled:opacity-50"
