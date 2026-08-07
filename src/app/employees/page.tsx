@@ -15,6 +15,7 @@ import {
   Search,
   Crown,
   Store,
+  Key,
 } from "lucide-react";
 
 export default function EmployeesPage() {
@@ -24,6 +25,11 @@ export default function EmployeesPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "", role: "seller" });
   const [searchTerm, setSearchTerm] = useState("");
+
+  // === NOUVEAU : Réinitialisation mot de passe ===
+  const [resetEmployee, setResetEmployee] = useState<any>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (status === "authenticated" && !isAdmin(session?.user?.role)) {
@@ -66,6 +72,44 @@ export default function EmployeesPage() {
 
     await fetch(`/api/employees/${id}`, { method: "DELETE" });
     fetchEmployees();
+  };
+
+  // === Réinitialiser mot de passe employé ===
+  const resetPassword = async () => {
+    if (!resetEmployee || !newPassword.trim()) return;
+
+    setResetting(true);
+    try {
+      const res = await fetch(`/api/employees/${resetEmployee.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: newPassword.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        alert("✅ Mot de passe réinitialisé avec succès !");
+        setResetEmployee(null);
+        setNewPassword("");
+      } else {
+        alert(data.error || "Erreur lors de la réinitialisation");
+      }
+    } catch (err) {
+      alert("Erreur réseau");
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const openResetModal = (employee: any) => {
+    setResetEmployee(employee);
+    setNewPassword("");
+  };
+
+  const closeResetModal = () => {
+    setResetEmployee(null);
+    setNewPassword("");
   };
 
   if (!isAdmin(session?.user?.role)) {
@@ -207,12 +251,21 @@ export default function EmployeesPage() {
                       </span>
                     </td>
                     <td className="px-6 py-5">
-                      <button
-                        onClick={() => deleteEmployee(e.id)}
-                        className="inline-flex items-center gap-1 text-red-600 hover:text-red-700 text-sm font-medium transition-colors"
-                      >
-                        <Trash2 size={14} /> Supprimer
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          onClick={() => openResetModal(e)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#D4AF37]/30 text-[#B87333] hover:bg-[#D4AF37]/10 text-sm font-medium transition-colors"
+                        >
+                          <Key size={14} /> Réinitialiser
+                        </button>
+
+                        <button
+                          onClick={() => deleteEmployee(e.id)}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-red-600 hover:bg-red-50 text-sm font-medium transition-colors"
+                        >
+                          <Trash2 size={14} /> Supprimer
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -226,6 +279,63 @@ export default function EmployeesPage() {
             </div>
           )}
         </div>
+
+        {/* === MODAL RÉINITIALISATION MOT DE PASSE === */}
+        {resetEmployee && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-[#D4AF37]/10 flex items-center justify-center">
+                  <Key size={20} className="text-[#B87333]" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-xl text-[#3D2B1F]">Réinitialiser le mot de passe</h3>
+                  <p className="text-sm text-[#5C4033]">{resetEmployee.name}</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-[#5C4033] mb-1.5">
+                    Nouveau mot de passe
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Entrez le nouveau mot de passe"
+                    className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]"
+                    minLength={4}
+                    required
+                  />
+                  <p className="text-xs text-[#5C4033]/60 mt-1">Minimum 4 caractères</p>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={closeResetModal}
+                    className="flex-1 py-3 border border-[#D4AF37]/30 rounded-xl text-[#5C4033] font-medium hover:bg-[#FDF6E3]/50"
+                    disabled={resetting}
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    onClick={resetPassword}
+                    disabled={!newPassword.trim() || resetting}
+                    className="flex-1 py-3 rounded-xl bg-[#B87333] text-white font-medium flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {resetting ? "Réinitialisation..." : "Réinitialiser"}
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-center text-[#5C4033]/50 mt-4">
+                L'employé pourra se connecter avec ce nouveau mot de passe.
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </ProtectedRoute>
   );
