@@ -33,33 +33,82 @@ export default function CashSessionModal({ isOpen, onClose, onOpened }: CashSess
         }),
       });
 
+      // Read body ONCE
+      const text = await res.text().catch(() => "");
+
       if (!res.ok) {
-        let errMsg = "Erreur lors de l'ouverture de la caisse";
+        console.error("=== [CAISSE] ÉCHEC OUVERTURE CAISSE ===");
+        console.error("HTTP Status:", res.status);
+        console.error("RAW RESPONSE (copie ça) :", text || "(vide)");
+
+        let serverError = text || "Erreur serveur (pas de détail)";
         try {
-          const text = await res.text();
-          if (text) {
-            const err = JSON.parse(text);
-            errMsg = err.error || errMsg;
-          }
+          const parsed = JSON.parse(text);
+          serverError = parsed.error || parsed.message || text;
         } catch {}
-        throw new Error(errMsg);
+
+        // Message qui contient TOUJOURS la réponse brute
+        const userMessage = 
+          `❌ Erreur ${res.status} lors de l'ouverture de la caisse\n\n` +
+          `Message : ${serverError}\n\n` +
+          `--- RÉPONSE BRUTE SERVEUR (copie-moi ça) ---\n` +
+          text + 
+          `\n\n` +
+          `Ouvre F12 → Console (onglet Console) et envoie-moi tout ce qui est en rouge.`;
+
+        throw new Error(userMessage);
       }
 
-      // Safe JSON parse
-      let newSession = null;
+      // Success — we don't trust the POST body for parsing issues.
+      // Instead, immediately fetch the fresh open session from the server.
       try {
-        const text = await res.text();
-        newSession = text ? JSON.parse(text) : null;
+        const refreshRes = await fetch("/api/cash-sessions", { cache: "no-store" });
+        const refreshText = await refreshRes.text().catch(() => "");
+        let freshSession = null;
+
+        if (refreshText) {
+          try { freshSession = JSON.parse(refreshText); } catch {}
+        }
+
+        if (!freshSession) {
+          freshSession = { 
+            id: 'fresh', 
+            openingAmount: parseFloat(openingAmount), 
+            status: "OPEN" 
+          };
+        }
+
+        onOpened(freshSession);
       } catch (e) {
-        // If no body, still consider success
-        newSession = { id: 'temp', openingAmount: parseFloat(openingAmount) };
+        // Fallback
+        onOpened({ 
+          id: 'fallback', 
+          openingAmount: parseFloat(openingAmount), 
+          status: "OPEN" 
+        });
       }
-      onOpened(newSession);
+
       onClose();
       setOpeningAmount("");
       setNote("");
     } catch (error: any) {
-      alert(error.message);
+      console.error("=== [CAISSE] ERREUR OUVERTURE CAISSE ===");
+      console.error("Error:", error);
+
+      let msg = error?.message || "Erreur lors de l'ouverture de la caisse";
+
+      // Toujours inclure le plus d'infos possible
+      const fullMsg = 
+        "❌ Erreur lors de l'ouverture de la caisse\n\n" +
+        msg + "\n\n" +
+        "=== Pour m'aider rapidement ===\n" +
+        "1. Appuie sur F12\n" +
+        "2. Onglet Console\n" +
+        "3. Copie tout ce qui est en rouge (surtout les lignes RAW RESPONSE et [CAISSE])\n" +
+        "4. Colle tout ici\n\n" +
+        "Message technique : " + (error?.message || "inconnu");
+
+      alert(fullMsg);
     } finally {
       setLoading(false);
     }
