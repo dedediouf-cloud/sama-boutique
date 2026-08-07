@@ -148,7 +148,8 @@ export default function CatalogPage() {
       customerName: "",
       customerPhone: "",
       quantity: "1",
-      paymentMethod: "cash_on_delivery",   // Paiement à la livraison par défaut (plus adapté pour un début)
+      // Catalogue public : UNIQUEMENT Paiement à la livraison (simple, sans API)
+      paymentMethod: "cash_on_delivery",
       deliveryType: "pickup",
       deliveryAddress: "",
     });
@@ -191,59 +192,26 @@ export default function CatalogPage() {
   const submitBuy = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const isSimplePayment = 
-      buyForm.paymentMethod === "cash_on_delivery" || 
-      buyForm.paymentMethod === "qr_merchant";
-
-    if (isSimplePayment) {
-      // Pour début : Paiement à livraison ou Paiement marchand QR (sans API)
-      const res = await fetch(`/api/catalog/${shopSlug}/reservation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productId: buyForm.productId,
-          productName: buyForm.productName,
-          customerName: buyForm.customerName,
-          customerPhone: buyForm.customerPhone,
-          quantity: parseInt(buyForm.quantity),
-          message: `Achat via catalogue - ${buyForm.paymentMethod === "cash_on_delivery" ? "Paiement à la livraison" : "Paiement marchand (QR Code)"}`,
-          unitPrice: buyForm.price,
-        }),
-      });
-
-      if (res.ok) {
-        const msg = buyForm.paymentMethod === "cash_on_delivery"
-          ? "✅ Commande enregistrée ! Paiement à la livraison. Le commerçant va vous contacter."
-          : "✅ Commande enregistrée ! Veuillez scanner le QR Code marchand du vendeur pour payer.";
-        alert(msg);
-        setBuyForm({ open: false });
-      } else {
-        alert("Erreur lors de l'enregistrement de la commande");
-      }
-      return;
-    }
-
-    // Paiement API réel (Orange Money / Wave)
-    const res = await fetch(`/api/catalog/${shopSlug}/pay`, {
+    // Catalogue public : TOUJOURS Paiement à la livraison (simple, sans API)
+    const res = await fetch(`/api/catalog/${shopSlug}/reservation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         productId: buyForm.productId,
-        quantity: parseInt(buyForm.quantity),
+        productName: buyForm.productName,
         customerName: buyForm.customerName,
         customerPhone: buyForm.customerPhone,
-        paymentMethod: buyForm.paymentMethod,
-        deliveryType: buyForm.deliveryType,
-        deliveryAddress: buyForm.deliveryAddress,
+        quantity: parseInt(buyForm.quantity),
+        message: `Achat via catalogue - Paiement à la livraison`,
+        unitPrice: buyForm.price,
       }),
     });
 
-    const result = await res.json();
     if (res.ok) {
-      alert(result.message || "Paiement initié ! Validez sur votre téléphone.");
+      alert("✅ Commande enregistrée ! Paiement à la livraison. Le commerçant va vous contacter.");
       setBuyForm({ open: false });
     } else {
-      alert(result.error || "Erreur lors du paiement");
+      alert("Erreur lors de l'enregistrement de la commande");
     }
   };
 
@@ -534,12 +502,10 @@ export default function CatalogPage() {
             <input type="tel" placeholder="Votre téléphone" value={buyForm.customerPhone} onChange={(e) => setBuyForm({ ...buyForm, customerPhone: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm" required />
             <input type="number" placeholder="Quantité" value={buyForm.quantity} onChange={(e) => setBuyForm({ ...buyForm, quantity: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm" required min="1" />
 
-            <select value={buyForm.paymentMethod} onChange={(e) => setBuyForm({ ...buyForm, paymentMethod: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm">
-              <option value="cash_on_delivery">Paiement à la livraison (recommandé)</option>
-              <option value="qr_merchant">Paiement marchand (QR Code OM / Wave)</option>
-              <option value="orange_money">Orange Money (API)</option>
-              <option value="wave">Wave (API)</option>
-            </select>
+            {/* Paiement simplifié - uniquement Paiement à la livraison pour le catalogue public */}
+            <div className="px-4 py-3 rounded-xl bg-[#FDF6E3]/70 border border-[#D4AF37]/30 text-sm text-[#5C4033]">
+              <strong>Mode de paiement :</strong> Paiement à la livraison
+            </div>
 
             <select value={buyForm.deliveryType} onChange={(e) => setBuyForm({ ...buyForm, deliveryType: e.target.value })} className="w-full px-4 py-3 rounded-xl input-warm">
               <option value="pickup">Retrait en boutique</option>

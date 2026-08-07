@@ -34,11 +34,26 @@ export default function CashSessionModal({ isOpen, onClose, onOpened }: CashSess
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Erreur lors de l'ouverture de la caisse");
+        let errMsg = "Erreur lors de l'ouverture de la caisse";
+        try {
+          const text = await res.text();
+          if (text) {
+            const err = JSON.parse(text);
+            errMsg = err.error || errMsg;
+          }
+        } catch {}
+        throw new Error(errMsg);
       }
 
-      const newSession = await res.json();
+      // Safe JSON parse
+      let newSession = null;
+      try {
+        const text = await res.text();
+        newSession = text ? JSON.parse(text) : null;
+      } catch (e) {
+        // If no body, still consider success
+        newSession = { id: 'temp', openingAmount: parseFloat(openingAmount) };
+      }
       onOpened(newSession);
       onClose();
       setOpeningAmount("");

@@ -266,21 +266,21 @@ export default function SalesPage() {
   // === FETCH STABLES (useCallback) - définis AVANT les useEffect ===
 
   const fetchCurrentCashSession = useCallback(async () => {
-
     try {
-
       const res = await fetch("/api/cash-sessions");
 
       if (res.ok) {
-
-        const data = await res.json();
-
+        // Safe parse to prevent "Failed to execute 'json' on 'Response': Unexpected end of JSON input"
+        const text = await res.text().catch(() => "");
+        const data = text ? JSON.parse(text) : null;
         setCashSession(data);
-
+      } else {
+        setCashSession(null);
       }
-
-    } catch (err) {}
-
+    } catch (err) {
+      console.warn('[CASH SESSION] fetch error (safe fallback):', err);
+      setCashSession(null);
+    }
   }, []);
 
   const fetchProducts = useCallback(async () => {
@@ -1952,62 +1952,19 @@ export default function SalesPage() {
 
                     <option value="cash_on_delivery">Paiement à la livraison</option>
 
-                    <option value="orange_money">Orange Money (API)</option>
-
-                    <option value="wave">Wave (API)</option>
-
                   </select>
 
                 </div>
 
-                {(paymentMethod === "orange_money" || paymentMethod === "wave") && (
-
-                  <div>
-
-                    <label className="block text-sm font-medium text-[#5C4033] mb-1.5 flex items-center gap-1.5">
-
-                      <Smartphone size={14} /> Téléphone client
-
-                    </label>
-
-                    <input
-
-                      type="tel"
-
-                      value={paymentPhone}
-
-                      onChange={(e) => setPaymentPhone(e.target.value)}
-
-                      placeholder={`Numéro ${paymentMethod === "orange_money" ? "Orange Money" : "Wave"}`}
-
-                      className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]"
-
-                      required
-
-                    />
-
-                    <p className="text-xs text-[#5C4033]/60 mt-1.5">Le client recevra une demande de paiement sur ce numéro.</p>
-
-                  </div>
-
-                )}
-
+                {/* Note explicative pour les paiements simples (plus de téléphone requis) */}
                 {(paymentMethod === "qr_merchant" || paymentMethod === "cash_on_delivery") && (
-
                   <div className="p-3 bg-[#FDF6E3]/70 border border-[#D4AF37]/30 rounded-xl text-sm text-[#5C4033]">
-
                     {paymentMethod === "qr_merchant" ? (
-
                       <>💡 <strong>Paiement marchand :</strong> Le client scanne votre QR Code OM/Wave existant pour payer directement. Aucun téléphone requis.</>
-
                     ) : (
-
                       <>🚚 <strong>Paiement à la livraison :</strong> Le client paiera en espèces ou par QR lors de la livraison ou du retrait. Aucun téléphone requis.</>
-
                     )}
-
                   </div>
-
                 )}
 
               </div>
@@ -2179,20 +2136,13 @@ export default function SalesPage() {
                       <Receipt size={18} />
 
                       {submittingSale ? "Validation en cours..." : (
-
                         !cashSession 
-
                           ? "Ouvrir la caisse d'abord"
                           : paymentMethod === "cash"
                           ? "Valider la vente + Imprimer"
                           : paymentMethod === "qr_merchant"
                           ? "Valider + Paiement marchand QR"
-                          : paymentMethod === "cash_on_delivery"
-                          ? "Valider + Paiement à la livraison"
-                          : paymentMethod === "orange_money"
-                          ? "Valider + Payer Orange Money"
-                          : "Valider + Payer Wave"
-
+                          : "Valider + Paiement à la livraison"
                       )}
 
                     </button>
