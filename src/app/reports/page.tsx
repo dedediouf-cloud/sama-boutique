@@ -12,8 +12,11 @@ import {
   ShoppingBag,
   CreditCard,
   Package,
-  ChevronDown,
   History,
+  AlertTriangle,
+  Target,
+  DollarSign,
+  TrendingDown,
 } from "lucide-react";
 import {
   LineChart,
@@ -32,6 +35,14 @@ import {
 } from "recharts";
 
 const WARM_COLORS = ["#D4AF37", "#B87333", "#C9895B", "#8B7355", "#C5A028"];
+
+const paymentLabels: Record<string, string> = {
+  cash: "Espèces",
+  qr_merchant: "Paiement marchand (QR)",
+  cash_on_delivery: "Paiement à la livraison",
+  orange_money: "Orange Money",
+  wave: "Wave",
+};
 
 export default function ReportsPage() {
   const { data: session, status } = useSession();
@@ -142,7 +153,7 @@ export default function ReportsPage() {
         ) : (
           <>
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 sm:gap-5 perspective-1000">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5 perspective-1000">
               <StatCard
                 title="Chiffre d'affaires"
                 value={`${formatPrice(data?.totalRevenue || 0)} FCFA`}
@@ -157,9 +168,21 @@ export default function ReportsPage() {
               />
               <StatCard
                 title="Panier moyen"
-                value={`${data?.totalSales > 0 ? formatPrice(Math.round(data.totalRevenue / data.totalSales)) : 0} FCFA`}
+                value={`${data?.totalSales > 0 ? formatPrice(Math.round((data.totalRevenue || 0) / data.totalSales)) : 0} FCFA`}
                 icon={TrendingUp}
                 gradient="from-[#C5A028]/20 to-[#D4AF37]/10"
+              />
+              <StatCard
+                title="Ventes moy./jour"
+                value={data?.avgDailySales?.toFixed(1) || 0}
+                icon={DollarSign}
+                gradient="from-[#8B7355]/20 to-[#C9895B]/10"
+              />
+              <StatCard
+                title="Écart caisse moyen"
+                value={`${formatPrice(Math.round(data?.cashStats?.averageDifference || 0))} FCFA`}
+                icon={Target}
+                gradient="from-[#B87333]/20 to-[#D4AF37]/10"
               />
             </div>
 
@@ -302,6 +325,149 @@ export default function ReportsPage() {
                 <div className="p-12 text-center text-[#5C4033]/60">
                   <Package size={64} className="mx-auto mb-4 text-[#D4AF37]/40" />
                   <p>Aucune vente sur cette période</p>
+                </div>
+              )}
+            </div>
+
+            {/* === RÉPARTITION PAR MODE DE PAIEMENT === */}
+            <div className="glass rounded-2xl p-6 tilt-card">
+              <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#3D2B1F] mb-5 flex items-center gap-2">
+                <DollarSign size={20} className="text-[#B87333]" />
+                Répartition par mode de paiement
+              </h2>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="h-72">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={data?.paymentMethods?.map((m: any, i: number) => ({
+                          name: paymentLabels[m.method] || m.method,
+                          value: m.revenue,
+                        })) || []}
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={90}
+                        dataKey="value"
+                        label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
+                      >
+                        {(data?.paymentMethods || []).map((_: any, index: number) => (
+                          <Cell key={`cell-${index}`} fill={WARM_COLORS[index % WARM_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(v: any) => formatPrice(Number(v)) + " FCFA"} />
+                      <Legend />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div>
+                  <div className="space-y-3">
+                    {data?.paymentMethods?.map((m: any, idx: number) => (
+                      <div key={idx} className="flex justify-between items-center p-3 bg-[#FDF6E3]/60 rounded-xl">
+                        <span className="font-medium text-[#3D2B1F]">{paymentLabels[m.method] || m.method}</span>
+                        <div className="text-right">
+                          <div className="font-semibold text-[#B87333]">{formatPrice(m.revenue)} FCFA</div>
+                          <div className="text-xs text-[#5C4033]/70">{m.count} ventes</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* === STATISTIQUES DE CAISSE === */}
+            <div className="glass rounded-2xl p-6 tilt-card">
+              <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#3D2B1F] mb-5 flex items-center gap-2">
+                <Target size={20} className="text-[#B87333]" />
+                Statistiques de caisse
+              </h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-[#FDF6E3]/70 rounded-xl">
+                  <div className="text-xs text-[#5C4033]/70">Sessions ouvertes</div>
+                  <div className="text-2xl font-bold text-[#3D2B1F]">{data?.cashStats?.totalSessions || 0}</div>
+                </div>
+                <div className="p-4 bg-[#FDF6E3]/70 rounded-xl">
+                  <div className="text-xs text-[#5C4033]/70">Sessions clôturées</div>
+                  <div className="text-2xl font-bold text-[#3D2B1F]">{data?.cashStats?.closedSessions || 0}</div>
+                </div>
+                <div className="p-4 bg-[#FDF6E3]/70 rounded-xl">
+                  <div className="text-xs text-[#5C4033]/70">Total espèces compté</div>
+                  <div className="text-2xl font-bold text-[#B87333]">{formatPrice(data?.cashStats?.totalCashIn || 0)} FCFA</div>
+                </div>
+                <div className="p-4 bg-[#FDF6E3]/70 rounded-xl">
+                  <div className="text-xs text-[#5C4033]/70">Écart total</div>
+                  <div className={`text-2xl font-bold ${ (data?.cashStats?.totalDifference || 0) >= 0 ? "text-green-600" : "text-red-600" }`}>
+                    {formatPrice(data?.cashStats?.totalDifference || 0)} FCFA
+                  </div>
+                </div>
+              </div>
+              <p className="mt-4 text-sm text-[#5C4033]/70">
+                Les écarts positifs = excédent. Négatifs = manquant. 
+                Les données sont liées automatiquement aux ventes de chaque session.
+              </p>
+            </div>
+
+            {/* === PRÉDICTIONS STOCK (NOUVEAU) === */}
+            <div className="glass rounded-2xl p-6 tilt-card border border-[#D4AF37]/20">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#3D2B1F] flex items-center gap-2">
+                  <AlertTriangle size={20} className="text-[#B87333]" />
+                  Prédictions de stock & Vitesse de vente
+                </h2>
+                <span className="text-xs text-[#5C4033]/60">Basé sur les ventes de la période</span>
+              </div>
+
+              {data?.stockPredictions?.length > 0 ? (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-[#FDF6E3]/50">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-semibold text-[#5C4033]">Produit</th>
+                          <th className="px-4 py-3 text-right font-semibold text-[#5C4033]">Stock actuel</th>
+                          <th className="px-4 py-3 text-right font-semibold text-[#5C4033]">Vendus</th>
+                          <th className="px-4 py-3 text-right font-semibold text-[#5C4033]">Vitesse / jour</th>
+                          <th className="px-4 py-3 text-right font-semibold text-[#5C4033]">Jours restants</th>
+                          <th className="px-4 py-3 text-left font-semibold text-[#5C4033]">Statut</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#D4AF37]/10">
+                        {data.stockPredictions.map((p: any, idx: number) => {
+                          const statusColor = 
+                            p.prediction === "Critique" ? "bg-red-100 text-red-700" :
+                            p.prediction === "Attention" ? "bg-amber-100 text-amber-700" :
+                            p.prediction === "Faible" ? "bg-orange-100 text-orange-700" :
+                            "bg-green-100 text-green-700";
+                          
+                          return (
+                            <tr key={idx} className="hover:bg-[#FDF6E3]/30">
+                              <td className="px-4 py-3 font-medium text-[#3D2B1F]">{p.name}</td>
+                              <td className="px-4 py-3 text-right font-semibold">{p.currentStock}</td>
+                              <td className="px-4 py-3 text-right">{p.soldInPeriod}</td>
+                              <td className="px-4 py-3 text-right text-[#B87333]">{p.velocityPerDay}</td>
+                              <td className="px-4 py-3 text-right font-bold">
+                                {p.daysLeft !== null ? p.daysLeft : "—"}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`inline-block px-3 py-1 text-xs font-medium rounded-full ${statusColor}`}>
+                                  {p.prediction}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-4 text-xs text-[#5C4033]/70">
+                    Vitesse = ventes par jour sur la période sélectionnée. 
+                    Les produits avec moins de 3 jours de stock sont marqués « Critique ».
+                  </div>
+                </>
+              ) : (
+                <div className="p-8 text-center text-[#5C4033]/60">
+                  <TrendingUp size={48} className="mx-auto mb-3 text-[#D4AF37]/40" />
+                  <p>Aucune prédiction de stock disponible (pas assez de ventes).</p>
                 </div>
               )}
             </div>
