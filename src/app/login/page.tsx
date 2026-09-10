@@ -17,7 +17,7 @@ export default function LoginPage() {
   // ================================================
   // ⚠️ CHANGE CE NUMÉRO PAR LE VRAI WHATSAPP DE L'ADMIN
   // ================================================
-  const adminWhatsApp = "+221775736910"; // ← Remplace par le vrai numéro
+  const adminWhatsApp = "+221763900910"; // ← Remplace par le vrai numéro
   const whatsappMessage = "Bonjour, je souhaite créer un compte boutique sur SamaBoutique.";
   const whatsappLink = `https://wa.me/${adminWhatsApp.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(whatsappMessage)}`;
 
