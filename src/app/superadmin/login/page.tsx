@@ -102,11 +102,6 @@ export default function SuperAdminLoginPage() {
               {loading ? t("Connexion...") : t("Se connecter")}
             </button>
           </form>
-
-          <p className="text-sm text-[#5C4033]/60 mt-6 text-center">
-            {t("Compte de démonstration :")} <br />
-            <strong className="text-[#B87333]">superadmin@boutique.com</strong> / <strong className="text-[#B87333]">demo123</strong>
-          </p>
         </div>
       </div>
     </div>
