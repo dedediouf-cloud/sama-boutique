@@ -21,6 +21,8 @@ model User {
   subscriptionStatus String   @default("pending")
   subscriptionDueDate DateTime?
   lastPaidAt          DateTime?
+  trialEndsAt         DateTime?
+  trialUsed           Boolean  @default(false)
   billingInterval    String   @default("monthly")
   referralCode       String   @unique
   referredById     String?
@@ -43,6 +45,7 @@ model User {
   rewardsFrom           ReferralReward[] @relation("ReferredRewards")
   referredBy            User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referralsMade         User[]  @relation("UserReferrals")
+  trialReminders        TrialReminder[]
   settings              BoutiqueSettings? @relation("UserToBoutiqueSettings")
   cashSessions          CashSession[]
 }
@@ -336,6 +339,7 @@ model GlobalSettings {
   annualSubscriptionDiscount Float    @default(0)
   referralRewardMonths       Int      @default(1)
   defaultMonthlyAmount       Float    @default(10000)
+  trialDays                  Int      @default(15)
   updatedAt                  DateTime @updatedAt
 }
 
@@ -393,4 +397,15 @@ model CashSession {
   updatedAt      DateTime  @updatedAt
 
   sales          Sale[]
+}
+
+model TrialReminder {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // J5 | J1 | J0
+  sentAt    DateTime @default(now())
+
+  @@unique([userId, kind])
+  @@index([userId])
 }

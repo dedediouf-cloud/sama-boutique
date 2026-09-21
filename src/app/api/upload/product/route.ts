@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { assertWritable } from "@/lib/access";
 
 const MAX_PRODUCT_IMAGE_SIZE = 350 * 1024; // ~350KB max for product photo
 
 export async function POST(request: NextRequest) {
+  // Verrou essai/abonnement : modifie les données uniquement si la boutique
+  // n'est pas en lecture seule (essai gratuit terminé).
+  const __locked = await assertWritable();
+  if (__locked) return __locked;
+
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });

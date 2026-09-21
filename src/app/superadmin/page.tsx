@@ -25,6 +25,7 @@ import {
   Plus,
   Tag,
   Gift,
+  Hourglass,
   X,
   Banknote,
   Settings,
@@ -47,6 +48,8 @@ interface Boutique {
   subscriptionStatus: string;
   subscriptionDueDate: string | null;
   lastPaidAt: string | null;
+  trialEndsAt: string | null;
+  trialUsed: boolean;
   billingInterval: string;
   referralCode: string;
   referredById: string | null;
@@ -65,6 +68,7 @@ interface GlobalSettings {
   annualSubscriptionDiscount: number;
   referralRewardMonths: number;
   defaultMonthlyAmount: number;
+  trialDays: number;
 }
 
 interface SubscriptionPromotion {
@@ -121,6 +125,7 @@ export default function SuperAdminDashboard() {
     annualSubscriptionDiscount: "0",
     referralRewardMonths: "1",
     defaultMonthlyAmount: "10000",
+    trialDays: "15",
   });
   const [showPromoForm, setShowPromoForm] = useState(false);
   const [showSettingsForm, setShowSettingsForm] = useState(false);
@@ -184,6 +189,7 @@ export default function SuperAdminDashboard() {
         annualSubscriptionDiscount: (data.annualSubscriptionDiscount || 0).toString(),
         referralRewardMonths: (data.referralRewardMonths || 1).toString(),
         defaultMonthlyAmount: (data.defaultMonthlyAmount || 10000).toString(),
+        trialDays: (data.trialDays || 15).toString(),
       });
     } catch (e) {
       console.error(e);
@@ -259,6 +265,7 @@ export default function SuperAdminDashboard() {
         annualSubscriptionDiscount: settingsForm.annualSubscriptionDiscount,
         referralRewardMonths: settingsForm.referralRewardMonths,
         defaultMonthlyAmount: settingsForm.defaultMonthlyAmount,
+        trialDays: settingsForm.trialDays,
       }),
     });
 
@@ -304,6 +311,33 @@ export default function SuperAdminDashboard() {
       fetchBoutiques();
     } else {
       alert(result.error || "Erreur lors du blocage");
+    }
+  };
+
+  const extendTrial = async (id: string, shopName: string) => {
+    const input = prompt(
+      `Prolonger l'essai gratuit de « ${shopName} » de combien de jours ?`,
+      "15"
+    );
+    if (input === null) return;
+    const days = parseInt(input, 10);
+    if (!days || days <= 0 || days > 365) {
+      alert("Nombre de jours invalide (entre 1 et 365).");
+      return;
+    }
+
+    const res = await fetch(`/api/superadmin/boutiques/${id}/extend-trial`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days }),
+    });
+
+    const result = await res.json();
+    if (res.ok) {
+      setMessage(result.message);
+      fetchBoutiques();
+    } else {
+      alert(result.error || "Erreur lors de la prolongation de l'essai");
     }
   };
 
@@ -390,11 +424,26 @@ export default function SuperAdminDashboard() {
     .reduce((sum, b) => sum + (b.subscriptionAmount || 0), 0);
   const totalSubscriptionRevenue = payments.reduce((sum, p) => sum + (p.finalAmount || 0), 0);
   const paidCount = boutiques.filter((b) => b.subscriptionStatus === "paid" && !b.isBlocked).length;
+  const trialCount = boutiques.filter((b) => trialInfo(b) !== null).length;
   const overdueCount = boutiques.filter((b) => {
     if (b.isBlocked) return false;
     if (!b.subscriptionDueDate) return true;
     return new Date(b.subscriptionDueDate) < new Date();
   }).length;
+
+  const trialInfo = (b: Boutique) => {
+    if (!b.trialEndsAt || b.subscriptionStatus === "paid") return null;
+    const days = Math.ceil((new Date(b.trialEndsAt).getTime() - Date.now()) / 86400000);
+    if (days > 0) return { label: `Essai · J-${days}`, expired: false };
+    return { label: "Essai échu", expired: true };
+  };
+
+  const statusLabel = (b: Boutique) => {
+    if (b.subscriptionStatus === "paid") return { text: "Payé", cls: "text-green-600" };
+    const t = trialInfo(b);
+    if (t) return { text: t.label, cls: t.expired ? "text-red-600" : "text-[#B87333]" };
+    return { text: "En attente", cls: "text-orange-600" };
+  };
 
   const formatDate = (date: string | null) => {
     if (!date) return "-";
@@ -455,6 +504,7 @@ export default function SuperAdminDashboard() {
           <StatCard icon={Coins} label="MRR abonnements" value={`${totalRecurring.toLocaleString("fr-FR")} FCFA`} gradient="from-[#B76E79]/20 to-[#D4A5A5]/10" />
           <StatCard icon={Banknote} label="CA abonnements" value={`${totalSubscriptionRevenue.toLocaleString("fr-FR")} FCFA`} gradient="from-[#B87333]/20 to-[#D4AF37]/10" />
           <StatCard icon={AlertCircle} label="Abonnements en retard" value={overdueCount} gradient="from-orange-100/50 to-orange-50/30" />
+          <StatCard icon={Hourglass} label="Boutiques en essai" value={trialCount} gradient="from-[#D4AF37]/20 to-[#B87333]/10" />
           <StatCard icon={Gift} label="Promotions actives" value={promotions.filter((p) => p.active).length} gradient="from-[#D4AF37]/20 to-[#B87333]/10" />
         </div>
 
@@ -477,7 +527,7 @@ export default function SuperAdminDashboard() {
           </div>
 
           {showSettingsForm ? (
-            <form onSubmit={handleSaveSettings} className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <form onSubmit={handleSaveSettings} className="grid grid-cols-1 md:grid-cols-4 gap-5">
               <div>
                 <label className="block text-sm font-medium text-[#5C4033] mb-1.5">Réduction abonnement annuel (%)</label>
                 <input
@@ -512,6 +562,18 @@ export default function SuperAdminDashboard() {
                   className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]"
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-[#5C4033] mb-1.5">Durée de l&apos;essai gratuit (jours)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  placeholder="15"
+                  value={settingsForm.trialDays}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, trialDays: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]"
+                />
+              </div>
               <div className="md:col-span-3">
                 <button
                   type="submit"
@@ -523,7 +585,7 @@ export default function SuperAdminDashboard() {
               </div>
             </form>
           ) : settings ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-5">
               <div className="rounded-xl bg-[#FDF8F3]/60 p-4 border border-[#D4AF37]/10">
                 <p className="text-xs text-[#5C4033]/70 mb-1">Réduction annuelle</p>
                 <p className="text-lg font-semibold text-[#3D2B1F]">{settings.annualSubscriptionDiscount}%</p>
@@ -535,6 +597,10 @@ export default function SuperAdminDashboard() {
               <div className="rounded-xl bg-[#FDF8F3]/60 p-4 border border-[#D4AF37]/10">
                 <p className="text-xs text-[#5C4033]/70 mb-1">Montant mensuel par défaut</p>
                 <p className="text-lg font-semibold text-[#3D2B1F]">{settings.defaultMonthlyAmount.toLocaleString("fr-FR")} FCFA</p>
+              </div>
+              <div className="rounded-xl bg-[#FDF8F3]/60 p-4 border border-[#D4AF37]/10">
+                <p className="text-xs text-[#5C4033]/70 mb-1">Essai gratuit</p>
+                <p className="text-lg font-semibold text-[#3D2B1F]">{settings.trialDays} jours</p>
               </div>
             </div>
           ) : (
@@ -787,17 +853,20 @@ export default function SuperAdminDashboard() {
                           <div className="text-xs text-[#5C4033]/70 flex items-center gap-1 mt-0.5">
                             <CreditCard size={12} />
                             Statut :
-                            <span className={`font-medium ${
-                              boutique.subscriptionStatus === "paid" ? "text-green-600" : "text-orange-600"
-                            }`}>
-                              {boutique.subscriptionStatus === "paid" ? "Payé" : "En attente"}
-                            </span>
+                            <span className={`font-medium ${statusLabel(boutique).cls}`}>
+                            {statusLabel(boutique).text}
+                          </span>
                           </div>
                           {boutique.lastPaidAt && (
                             <div className="text-xs text-[#5C4033]/60 mt-0.5">
                               Dernier paiement : {formatDate(boutique.lastPaidAt)}
                             </div>
                           )}
+                            {boutique.trialEndsAt && boutique.subscriptionStatus !== "paid" && (
+                              <div className="text-xs text-[#B87333] font-medium mt-1 flex items-center gap-1">
+                                <Hourglass size={12} /> Fin de l&apos;essai : {formatDate(boutique.trialEndsAt)}
+                              </div>
+                            )}
                         </td>
                         <td className="px-6 py-5 text-center">
                           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#D4AF37]/10 text-[#B87333] font-medium">
@@ -834,6 +903,14 @@ export default function SuperAdminDashboard() {
                               {boutique.isBlocked ? <Unlock size={14} /> : <Lock size={14} />}
                               {boutique.isBlocked ? "Débloquer" : "Bloquer"}
                             </button>
+                            <button
+                              onClick={() => extendTrial(boutique.id, boutique.shopName)}
+                              className="px-3 py-1.5 rounded-lg bg-[#FFF8E7] text-[#B87333] text-xs font-medium border border-[#D4AF37]/20 inline-flex items-center gap-1"
+                              title="Ajouter des jours d'essai gratuit"
+                            >
+                              <Hourglass size={12} /> Prolonger
+                            </button>
+
                             <button
                               onClick={() => resetPassword(boutique.id)}
                               className="inline-flex items-center gap-1 text-[#B87333] hover:text-[#5C4033] font-medium transition-colors"
@@ -1001,10 +1078,8 @@ export default function SuperAdminDashboard() {
                           <span className="text-[#5C4033]/70 flex items-center gap-1">
                             <Calendar size={12} /> Échéance : {formatDate(boutique.subscriptionDueDate)}
                           </span>
-                          <span className={`font-medium ${
-                            boutique.subscriptionStatus === "paid" ? "text-green-600" : "text-orange-600"
-                          }`}>
-                            {boutique.subscriptionStatus === "paid" ? "Payé" : "En attente"}
+                          <span className={`font-medium ${statusLabel(boutique).cls}`}>
+                            {statusLabel(boutique).text}
                           </span>
                         </div>
                         {boutique.lastPaidAt && (
@@ -1012,6 +1087,11 @@ export default function SuperAdminDashboard() {
                             Dernier paiement : {formatDate(boutique.lastPaidAt)}
                           </div>
                         )}
+                          {boutique.trialEndsAt && boutique.subscriptionStatus !== "paid" && (
+                            <div className="text-xs text-[#B87333] font-medium mt-1 flex items-center gap-1">
+                              <Hourglass size={12} /> Fin de l&apos;essai : {formatDate(boutique.trialEndsAt)}
+                            </div>
+                          )}
                       </div>
                     </div>
 
@@ -1056,6 +1136,14 @@ export default function SuperAdminDashboard() {
                         {boutique.isBlocked ? <Unlock size={12} /> : <Lock size={12} />}
                         {boutique.isBlocked ? "Débloquer" : "Bloquer"}
                       </button>
+                      <button
+                        onClick={() => extendTrial(boutique.id, boutique.shopName)}
+                        className="px-3 py-1.5 rounded-lg bg-[#FFF8E7] text-[#B87333] text-xs font-medium border border-[#D4AF37]/20 inline-flex items-center gap-1"
+                        title="Ajouter des jours d'essai gratuit"
+                      >
+                        <Hourglass size={12} /> Prolonger
+                      </button>
+
                       <button
                         onClick={() => resetPassword(boutique.id)}
                         className="px-3 py-1.5 rounded-lg bg-[#FDF8F3] text-[#B87333] text-xs font-medium border border-[#D4AF37]/20 inline-flex items-center gap-1"

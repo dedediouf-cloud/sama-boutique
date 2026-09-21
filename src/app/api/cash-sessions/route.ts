@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
+import { assertWritable } from "@/lib/access";
 
 export async function GET() {
   try {
@@ -29,6 +30,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  // Verrou essai/abonnement : modifie les données uniquement si la boutique
+  // n'est pas en lecture seule (essai gratuit terminé).
+  const __locked = await assertWritable();
+  if (__locked) return __locked;
+
   try {
     const user = await getCurrentUser();
     

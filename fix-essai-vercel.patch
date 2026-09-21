@@ -1,0 +1,1385 @@
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index cd54bf1..2176246 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -21,6 +21,8 @@ model User {
+   subscriptionStatus String   @default("pending")
+   subscriptionDueDate DateTime?
+   lastPaidAt          DateTime?
++  trialEndsAt         DateTime?
++  trialUsed           Boolean  @default(false)
+   billingInterval    String   @default("monthly")
+   referralCode       String   @unique
+   referredById     String?
+@@ -43,6 +45,7 @@ model User {
+   rewardsFrom           ReferralReward[] @relation("ReferredRewards")
+   referredBy            User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+   referralsMade         User[]  @relation("UserReferrals")
++  trialReminders        TrialReminder[]
+   settings              BoutiqueSettings? @relation("UserToBoutiqueSettings")
+   cashSessions          CashSession[]
+ }
+@@ -336,6 +339,7 @@ model GlobalSettings {
+   annualSubscriptionDiscount Float    @default(0)
+   referralRewardMonths       Int      @default(1)
+   defaultMonthlyAmount       Float    @default(10000)
++  trialDays                  Int      @default(15)
+   updatedAt                  DateTime @updatedAt
+ }
+ 
+@@ -394,3 +398,14 @@ model CashSession {
+ 
+   sales          Sale[]
+ }
++
++model TrialReminder {
++  id        String   @id @default(cuid())
++  userId    String
++  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
++  kind      String // J5 | J1 | J0
++  sentAt    DateTime @default(now())
++
++  @@unique([userId, kind])
++  @@index([userId])
++}
+diff --git a/prisma/schema.prod.prisma b/prisma/schema.prod.prisma
+index 4f0e74a..e81fc70 100644
+--- a/prisma/schema.prod.prisma
++++ b/prisma/schema.prod.prisma
+@@ -21,6 +21,8 @@ model User {
+   subscriptionStatus String   @default("pending")
+   subscriptionDueDate DateTime?
+   lastPaidAt          DateTime?
++  trialEndsAt         DateTime?
++  trialUsed           Boolean  @default(false)
+   billingInterval    String   @default("monthly")
+   referralCode       String   @unique
+   referredById     String?
+@@ -43,6 +45,7 @@ model User {
+   rewardsFrom           ReferralReward[] @relation("ReferredRewards")
+   referredBy            User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+   referralsMade         User[]  @relation("UserReferrals")
++  trialReminders        TrialReminder[]
+   settings              BoutiqueSettings? @relation("UserToBoutiqueSettings")
+   cashSessions          CashSession[]
+ }
+@@ -337,6 +340,7 @@ model GlobalSettings {
+   annualSubscriptionDiscount Float    @default(0)
+   referralRewardMonths       Int      @default(1)
+   defaultMonthlyAmount       Float    @default(10000)
++  trialDays                  Int      @default(15)
+   updatedAt                  DateTime @updatedAt
+ }
+ 
+@@ -395,3 +399,14 @@ model CashSession {
+ 
+   sales          Sale[]
+ }
++
++model TrialReminder {
++  id        String   @id @default(cuid())
++  userId    String
++  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
++  kind      String // J5 | J1 | J0
++  sentAt    DateTime @default(now())
++
++  @@unique([userId, kind])
++  @@index([userId])
++}
+diff --git a/src/app/api/auth/check-status/route.ts b/src/app/api/auth/check-status/route.ts
+index 66bc661..00407e5 100644
+--- a/src/app/api/auth/check-status/route.ts
++++ b/src/app/api/auth/check-status/route.ts
+@@ -1,42 +1,61 @@
+-import { NextResponse } from "next/server";
+-import { getCurrentUser } from "@/lib/session";
+-import { getAccessForUser } from "@/lib/access";
+-
+-/**
+- * GET /api/user/access
+- * Renvoie l'état d'accès de la boutique connectée (essai, abonnement, lecture
+- * seule). Utilisé par la bannière affichée en haut de l'application.
+- */
+-export async function GET() {
+-  const user = await getCurrentUser();
+-  if (!user) {
+-    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+-  }
++import { NextRequest, NextResponse } from "next/server";
++import { prisma } from "@/lib/prisma";
++import { computeAccess } from "@/lib/access";
++
++export async function POST(req: NextRequest) {
++  try {
++    const { email } = await req.json();
++
++    if (!email || typeof email !== "string") {
++      return NextResponse.json({ error: "Email requis" }, { status: 400 });
++    }
+ 
+-  if (user.role === "superadmin") {
+-    return NextResponse.json({
+-      state: "SUPERADMIN",
+-      readOnly: false,
+-      daysLeft: null,
+-      title: "Super Admin",
+-      message: "",
++    const user = await prisma.user.findUnique({
++      where: { email: email.toLowerCase().trim() },
+     });
+-  }
+ 
+-  const ownerId = (user.ownerId as string) || user.id;
+-  const access = await getAccessForUser(ownerId);
+-
+-  // Le vendeur (employé) ne voit pas les informations d'abonnement du patron
+-  if (user.role !== "admin") {
+-    return NextResponse.json({
+-      ...access,
+-      state: access.state,
+-      readOnly: access.readOnly,
+-      daysLeft: null,
+-      title: access.readOnly ? "Boutique en lecture seule" : "",
+-      message: access.readOnly ? access.message : "",
++    if (user) {
++      const access = computeAccess(user);
++
++      // IMPORTANT : l'essai terminé n'empêche PAS la connexion (mode lecture
++      // seule). Seul un blocage manuel du super admin empêche l'accès.
++      if (access.state === "BLOCKED") {
++        return NextResponse.json({
++          blocked: true,
++          message: access.message,
++          access,
++        });
++      }
++
++      return NextResponse.json({
++        blocked: false,
++        message: access.readOnly ? access.message : null,
++        access,
++      });
++    }
++
++    const employee = await prisma.employee.findFirst({
++      where: { email: email.toLowerCase().trim() },
++      include: { user: true },
+     });
+-  }
+ 
+-  return NextResponse.json(access);
++    if (employee) {
++      const access = computeAccess(employee.user);
++      if (access.state === "BLOCKED") {
++        return NextResponse.json({
++          blocked: true,
++          message: "Cette boutique est bloquée. Veuillez contacter l'administrateur.",
++          access,
++        });
++      }
++      return NextResponse.json({ blocked: false, message: null, access });
++    }
++
++    return NextResponse.json({ blocked: false, message: null, access: null });
++  } catch (error: any) {
++    return NextResponse.json(
++      { error: error.message || "Erreur serveur" },
++      { status: 500 }
++    );
++  }
+ }
+diff --git a/src/app/api/cash-sessions/[id]/close/route.ts b/src/app/api/cash-sessions/[id]/close/route.ts
+index 4f94920..5946ffd 100644
+--- a/src/app/api/cash-sessions/[id]/close/route.ts
++++ b/src/app/api/cash-sessions/[id]/close/route.ts
+@@ -3,11 +3,17 @@ import { getServerSession } from "next-auth";
+ import { authOptions } from "@/lib/auth";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function POST(
+   req: NextRequest,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user?.id) {
+     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+diff --git a/src/app/api/cash-sessions/route.ts b/src/app/api/cash-sessions/route.ts
+index ce95749..67cae8b 100644
+--- a/src/app/api/cash-sessions/route.ts
++++ b/src/app/api/cash-sessions/route.ts
+@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
+ import { authOptions } from "@/lib/auth";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   try {
+@@ -29,6 +30,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(req: NextRequest) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   try {
+     const user = await getCurrentUser();
+     
+diff --git a/src/app/api/customers/[id]/route.ts b/src/app/api/customers/[id]/route.ts
+index 9dae9a9..4ab2987 100644
+--- a/src/app/api/customers/[id]/route.ts
++++ b/src/app/api/customers/[id]/route.ts
+@@ -1,11 +1,17 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function PATCH(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+ 
+diff --git a/src/app/api/customers/route.ts b/src/app/api/customers/route.ts
+index c6ca461..a26f7fe 100644
+--- a/src/app/api/customers/route.ts
++++ b/src/app/api/customers/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   const user = await getCurrentUser();
+@@ -22,6 +23,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+ 
+diff --git a/src/app/api/deliveries/[id]/route.ts b/src/app/api/deliveries/[id]/route.ts
+index 08ff48e..14ee898 100644
+--- a/src/app/api/deliveries/[id]/route.ts
++++ b/src/app/api/deliveries/[id]/route.ts
+@@ -1,11 +1,17 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function PATCH(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+ 
+diff --git a/src/app/api/deliveries/route.ts b/src/app/api/deliveries/route.ts
+index 4bad42e..325cb57 100644
+--- a/src/app/api/deliveries/route.ts
++++ b/src/app/api/deliveries/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   const user = await getCurrentUser();
+@@ -25,6 +26,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+ 
+diff --git a/src/app/api/employees/[id]/route.ts b/src/app/api/employees/[id]/route.ts
+index e6e103e..60cfc73 100644
+--- a/src/app/api/employees/[id]/route.ts
++++ b/src/app/api/employees/[id]/route.ts
+@@ -2,11 +2,17 @@ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { requireAdmin } from "@/lib/session";
+ import bcrypt from "bcryptjs";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function DELETE(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await requireAdmin();
+   if (!user) return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+ 
+@@ -29,6 +35,11 @@ export async function PATCH(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await requireAdmin();
+   if (!user) return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+ 
+diff --git a/src/app/api/employees/route.ts b/src/app/api/employees/route.ts
+index 7c03cea..7a6891d 100644
+--- a/src/app/api/employees/route.ts
++++ b/src/app/api/employees/route.ts
+@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { requireAdmin } from "@/lib/session";
+ import bcrypt from "bcryptjs";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   const user = await requireAdmin();
+@@ -16,6 +17,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await requireAdmin();
+   if (!user) return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+ 
+diff --git a/src/app/api/inventory/route.ts b/src/app/api/inventory/route.ts
+index cbc38cb..7951a4a 100644
+--- a/src/app/api/inventory/route.ts
++++ b/src/app/api/inventory/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   const user = await getCurrentUser();
+@@ -22,6 +23,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(req: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+ 
+diff --git a/src/app/api/payments/verify/route.ts b/src/app/api/payments/verify/route.ts
+index b70305e..d4c1c05 100644
+--- a/src/app/api/payments/verify/route.ts
++++ b/src/app/api/payments/verify/route.ts
+@@ -3,8 +3,14 @@ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
+ import { getPaymentProvider } from "@/lib/payments";
+ import { getMerchantCredentials } from "@/lib/payments/credentials";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+ 
+diff --git a/src/app/api/products/[id]/restock/route.ts b/src/app/api/products/[id]/restock/route.ts
+index 46f5bc7..489ccc2 100644
+--- a/src/app/api/products/[id]/restock/route.ts
++++ b/src/app/api/products/[id]/restock/route.ts
+@@ -1,11 +1,17 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function POST(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+diff --git a/src/app/api/products/[id]/route.ts b/src/app/api/products/[id]/route.ts
+index f5695e4..4d9414a 100644
+--- a/src/app/api/products/[id]/route.ts
++++ b/src/app/api/products/[id]/route.ts
+@@ -1,12 +1,18 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ // ✅ Correct for Next.js 15 / 16
+ export async function DELETE(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const { id } = await params;
+ 
+   const user = await getCurrentUser();
+@@ -45,6 +51,11 @@ export async function PATCH(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const { id } = await params;
+ 
+   const user = await getCurrentUser();
+diff --git a/src/app/api/products/import/route.ts b/src/app/api/products/import/route.ts
+index 1407cf9..4587fe3 100644
+--- a/src/app/api/products/import/route.ts
++++ b/src/app/api/products/import/route.ts
+@@ -1,8 +1,14 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+diff --git a/src/app/api/products/route.ts b/src/app/api/products/route.ts
+index 6c7395c..e4ea8b8 100644
+--- a/src/app/api/products/route.ts
++++ b/src/app/api/products/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   const user = await getCurrentUser();
+@@ -18,6 +19,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+@@ -39,6 +45,11 @@ export async function POST(request: Request) {
+ 
+ // ✅ NOUVEAU : Suppression en masse pour l'admin
+ export async function DELETE() {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+diff --git a/src/app/api/promotions/[id]/route.ts b/src/app/api/promotions/[id]/route.ts
+index 7934748..ba4e0d6 100644
+--- a/src/app/api/promotions/[id]/route.ts
++++ b/src/app/api/promotions/[id]/route.ts
+@@ -1,11 +1,17 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function DELETE(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+@@ -29,6 +35,11 @@ export async function PATCH(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+diff --git a/src/app/api/promotions/route.ts b/src/app/api/promotions/route.ts
+index 13ce2b9..4ad126d 100644
+--- a/src/app/api/promotions/route.ts
++++ b/src/app/api/promotions/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   const user = await getCurrentUser();
+@@ -17,6 +18,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+diff --git a/src/app/api/register/route.ts b/src/app/api/register/route.ts
+index fabd66d..36f950f 100644
+--- a/src/app/api/register/route.ts
++++ b/src/app/api/register/route.ts
+@@ -1,7 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import bcrypt from "bcryptjs";
+-import { getNextDueDate, addMonths } from "@/lib/subscription";
++import { addMonths } from "@/lib/subscription";
+ 
+ function slugify(text: string) {
+   return text
+@@ -51,7 +51,16 @@ export async function POST(request: Request) {
+ 
+     const interval: "monthly" | "annual" = billingInterval === "annual" ? "annual" : "monthly";
+     const now = new Date();
+-    const dueDate = getNextDueDate(now, interval);
++
++    // === ESSAI GRATUIT ===
++    // La nouvelle boutique démarre avec un essai gratuit (15 jours par défaut,
++    // durée réglable dans les Paramètres globaux du super admin).
++    // L'échéance d'abonnement est calée sur la fin de l'essai : le premier
++    // paiement démarre donc exactement à la fin de l'essai, sans jour perdu.
++    const trialDays = settings.trialDays && settings.trialDays > 0 ? settings.trialDays : 15;
++    const trialEndsAt = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
++    trialEndsAt.setUTCHours(23, 59, 59, 999);
++    const dueDate = trialEndsAt;
+ 
+     const hashedPassword = await bcrypt.hash(password, 10);
+ 
+@@ -78,8 +87,10 @@ export async function POST(request: Request) {
+         shopSlug,
+         phone,
+         subscriptionAmount: settings.defaultMonthlyAmount,
+-        subscriptionStatus: "pending",
++        subscriptionStatus: "trial",
+         subscriptionDueDate: dueDate,
++        trialEndsAt,
++        trialUsed: true,
+         billingInterval: interval,
+         referralCode: referralCodeStr,
+         referredById: referrerId || null,
+diff --git a/src/app/api/reservations/route.ts b/src/app/api/reservations/route.ts
+index f07eb55..838e471 100644
+--- a/src/app/api/reservations/route.ts
++++ b/src/app/api/reservations/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   const user = await getCurrentUser();
+@@ -17,6 +18,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+ 
+@@ -37,6 +43,11 @@ export async function POST(request: Request) {
+ }
+ 
+ export async function PATCH(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+diff --git a/src/app/api/sales/[id]/route.ts b/src/app/api/sales/[id]/route.ts
+index 8bcf2c8..59c4d05 100644
+--- a/src/app/api/sales/[id]/route.ts
++++ b/src/app/api/sales/[id]/route.ts
+@@ -1,6 +1,7 @@
+ import { NextRequest, NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ // DELETE /api/sales/[id] - Annuler une vente (ADMIN ONLY)
+ // Signature standard Next.js 15+ (corrige l'erreur RouteHandlerConfig sur Vercel)
+@@ -8,6 +9,11 @@ export async function DELETE(
+   request: NextRequest,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const { id } = await params;
+ 
+   const user = await getCurrentUser();
+diff --git a/src/app/api/sales/route.ts b/src/app/api/sales/route.ts
+index b033343..99fca7e 100644
+--- a/src/app/api/sales/route.ts
++++ b/src/app/api/sales/route.ts
+@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
+ import { getPaymentProvider } from "@/lib/payments";
+ import { getMerchantCredentials } from "@/lib/payments/credentials";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   const user = await getCurrentUser();
+@@ -26,6 +27,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin" && user.role !== "seller") {
+diff --git a/src/app/api/settings/payments/route.ts b/src/app/api/settings/payments/route.ts
+index bf666c5..baf27fd 100644
+--- a/src/app/api/settings/payments/route.ts
++++ b/src/app/api/settings/payments/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { getCurrentUser } from "@/lib/session";
+ import { prisma } from "@/lib/prisma";
++import { assertWritable } from "@/lib/access";
+ 
+ // GET: Récupérer les paramètres de paiement de la boutique connectée
+ export async function GET() {
+@@ -43,6 +44,11 @@ export async function GET() {
+ 
+ // PATCH: Sauvegarder / mettre à jour les paramètres de paiement
+ export async function PATCH(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) {
+     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+diff --git a/src/app/api/superadmin/boutiques/[id]/block/route.ts b/src/app/api/superadmin/boutiques/[id]/block/route.ts
+index 0301891..7550ae0 100644
+--- a/src/app/api/superadmin/boutiques/[id]/block/route.ts
++++ b/src/app/api/superadmin/boutiques/[id]/block/route.ts
+@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
+ import { authOptions } from "@/lib/auth";
+ import { prisma } from "@/lib/prisma";
+ import { isSuperAdmin } from "@/lib/roles";
++import { invalidateAccess } from "@/lib/access";
+ 
+ export async function POST(
+   req: NextRequest,
+@@ -17,6 +18,8 @@ export async function POST(
+     const { id } = await params;
+     const { isBlocked } = await req.json();
+ 
++    invalidateAccess(id);
++
+     const boutique = await prisma.user.update({
+       where: { id },
+       data: { isBlocked: !!isBlocked },
+diff --git a/src/app/api/superadmin/boutiques/[id]/extend-tiral/route.ts b/src/app/api/superadmin/boutiques/[id]/extend-trial/route.ts
+similarity index 100%
+rename from src/app/api/superadmin/boutiques/[id]/extend-tiral/route.ts
+rename to src/app/api/superadmin/boutiques/[id]/extend-trial/route.ts
+diff --git a/src/app/api/superadmin/boutiques/[id]/pay-subscription/route.ts b/src/app/api/superadmin/boutiques/[id]/pay-subscription/route.ts
+index 3ee732e..a17d400 100644
+--- a/src/app/api/superadmin/boutiques/[id]/pay-subscription/route.ts
++++ b/src/app/api/superadmin/boutiques/[id]/pay-subscription/route.ts
+@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
+ import { authOptions } from "@/lib/auth";
+ import { prisma } from "@/lib/prisma";
+ import { isSuperAdmin } from "@/lib/roles";
++import { invalidateAccess } from "@/lib/access";
+ import { getNextDueDate, addMonths, getAnnualAmount } from "@/lib/subscription";
+ 
+ export async function POST(
+@@ -78,6 +79,9 @@ export async function POST(
+       },
+     });
+ 
++    // L'accès complet est rétabli immédiatement (cache d'accès de 60 s)
++    invalidateAccess(id);
++
+     await prisma.subscriptionPayment.create({
+       data: {
+         userId: id,
+diff --git a/src/app/api/superadmin/boutiques/route.ts b/src/app/api/superadmin/boutiques/route.ts
+index 1acd611..cd1980c 100644
+--- a/src/app/api/superadmin/boutiques/route.ts
++++ b/src/app/api/superadmin/boutiques/route.ts
+@@ -4,7 +4,6 @@ import { authOptions } from "@/lib/auth";
+ import { prisma } from "@/lib/prisma";
+ import bcrypt from "bcryptjs";
+ import { isSuperAdmin } from "@/lib/roles";
+-import { getNextDueDate } from "@/lib/subscription";
+ 
+ function generateReferralCode(base: string) {
+   const clean = base
+@@ -35,6 +34,8 @@ export async function GET() {
+       subscriptionAmount: true,
+       subscriptionStatus: true,
+       subscriptionDueDate: true,
++      trialEndsAt: true,
++      trialUsed: true,
+       lastPaidAt: true,
+       billingInterval: true,
+       referralCode: true,
+@@ -92,7 +93,19 @@ export async function POST(req: NextRequest) {
+     const hashedPassword = await bcrypt.hash(password, 10);
+ 
+     const interval: "monthly" | "annual" = billingInterval === "annual" ? "annual" : "monthly";
+-    const dueDate = getNextDueDate(new Date(), interval);
++
++    // Les boutiques créées à la main par le super admin démarrent elles aussi
++    // avec l'essai gratuit (durée réglable dans les Paramètres globaux).
++    const globalSettings = await prisma.globalSettings.findUnique({
++      where: { id: "default" },
++    });
++    const trialDays =
++      globalSettings?.trialDays && globalSettings.trialDays > 0
++        ? globalSettings.trialDays
++        : 15;
++    const trialEndsAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000);
++    trialEndsAt.setUTCHours(23, 59, 59, 999);
++    const dueDate = trialEndsAt;
+ 
+     let referralCode = generateReferralCode(shopSlug);
+     while (await prisma.user.findUnique({ where: { referralCode } })) {
+@@ -108,8 +121,10 @@ export async function POST(req: NextRequest) {
+         shopSlug: shopSlug.toLowerCase().replace(/\s+/g, "-"),
+         phone,
+         subscriptionAmount: parseFloat(subscriptionAmount) || 0,
+-        subscriptionStatus: "pending",
++        subscriptionStatus: "trial",
+         subscriptionDueDate: dueDate,
++        trialEndsAt,
++        trialUsed: true,
+         billingInterval: interval,
+         referralCode,
+       },
+diff --git a/src/app/api/superadmin/settings/route.ts b/src/app/api/superadmin/settings/route.ts
+index 4c0b005..633c45f 100644
+--- a/src/app/api/superadmin/settings/route.ts
++++ b/src/app/api/superadmin/settings/route.ts
+@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
+ 
+   try {
+     const body = await req.json();
+-    const { annualSubscriptionDiscount, referralRewardMonths, defaultMonthlyAmount } = body;
++    const { annualSubscriptionDiscount, referralRewardMonths, defaultMonthlyAmount, trialDays } = body;
+ 
+     const settings = await prisma.globalSettings.upsert({
+       where: { id: "default" },
+@@ -38,11 +38,13 @@ export async function POST(req: NextRequest) {
+         annualSubscriptionDiscount: parseFloat(annualSubscriptionDiscount) || 0,
+         referralRewardMonths: parseInt(referralRewardMonths) || 1,
+         defaultMonthlyAmount: parseFloat(defaultMonthlyAmount) || 10000,
++        trialDays: parseInt(trialDays) > 0 ? parseInt(trialDays) : 15,
+       },
+       update: {
+         annualSubscriptionDiscount: parseFloat(annualSubscriptionDiscount) || 0,
+         referralRewardMonths: parseInt(referralRewardMonths) || 1,
+         defaultMonthlyAmount: parseFloat(defaultMonthlyAmount) || 10000,
++        trialDays: parseInt(trialDays) > 0 ? parseInt(trialDays) : 15,
+       },
+     });
+ 
+diff --git a/src/app/api/supplier-orders/[id]/route.ts b/src/app/api/supplier-orders/[id]/route.ts
+index d55abcd..2c82bbd 100644
+--- a/src/app/api/supplier-orders/[id]/route.ts
++++ b/src/app/api/supplier-orders/[id]/route.ts
+@@ -1,11 +1,17 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function PATCH(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+diff --git a/src/app/api/supplier-orders/route.ts b/src/app/api/supplier-orders/route.ts
+index 4f6b44f..213cc94 100644
+--- a/src/app/api/supplier-orders/route.ts
++++ b/src/app/api/supplier-orders/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   const user = await getCurrentUser();
+@@ -21,6 +22,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+diff --git a/src/app/api/suppliers/[id]/route.ts b/src/app/api/suppliers/[id]/route.ts
+index d189d85..f91411e 100644
+--- a/src/app/api/suppliers/[id]/route.ts
++++ b/src/app/api/suppliers/[id]/route.ts
+@@ -1,11 +1,17 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function DELETE(
+   request: Request,
+   { params }: { params: Promise<{ id: string }> }
+ ) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+diff --git a/src/app/api/suppliers/route.ts b/src/app/api/suppliers/route.ts
+index b6cdaf0..ba634d3 100644
+--- a/src/app/api/suppliers/route.ts
++++ b/src/app/api/suppliers/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function GET() {
+   const user = await getCurrentUser();
+@@ -17,6 +18,11 @@ export async function GET() {
+ }
+ 
+ export async function POST(request: Request) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const user = await getCurrentUser();
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+diff --git a/src/app/api/upload/logo/route.ts b/src/app/api/upload/logo/route.ts
+index 7deb2f9..3efebdf 100644
+--- a/src/app/api/upload/logo/route.ts
++++ b/src/app/api/upload/logo/route.ts
+@@ -12,8 +12,14 @@ import { getServerSession } from "next-auth";
+ import { authOptions } from "@/lib/auth";
+ import { prisma } from "@/lib/prisma";
+ import { isSuperAdmin } from "@/lib/roles";
++import { assertWritable } from "@/lib/access";
+ 
+ export async function POST(request: NextRequest) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const session = await getServerSession(authOptions);
+   if (!session?.user?.id) {
+     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+diff --git a/src/app/api/upload/product/route.ts b/src/app/api/upload/product/route.ts
+index 70c905a..ac27fc2 100644
+--- a/src/app/api/upload/product/route.ts
++++ b/src/app/api/upload/product/route.ts
+@@ -1,10 +1,16 @@
+ import { NextRequest, NextResponse } from "next/server";
+ import { getServerSession } from "next-auth";
+ import { authOptions } from "@/lib/auth";
++import { assertWritable } from "@/lib/access";
+ 
+ const MAX_PRODUCT_IMAGE_SIZE = 350 * 1024; // ~350KB max for product photo
+ 
+ export async function POST(request: NextRequest) {
++  // Verrou essai/abonnement : modifie les données uniquement si la boutique
++  // n'est pas en lecture seule (essai gratuit terminé).
++  const __locked = await assertWritable();
++  if (__locked) return __locked;
++
+   const session = await getServerSession(authOptions);
+   if (!session?.user?.id) {
+     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+diff --git a/src/app/api/user/access/route.ts b/src/app/api/user/access/route.ts
+index 00407e5..66bc661 100644
+--- a/src/app/api/user/access/route.ts
++++ b/src/app/api/user/access/route.ts
+@@ -1,61 +1,42 @@
+-import { NextRequest, NextResponse } from "next/server";
+-import { prisma } from "@/lib/prisma";
+-import { computeAccess } from "@/lib/access";
+-
+-export async function POST(req: NextRequest) {
+-  try {
+-    const { email } = await req.json();
+-
+-    if (!email || typeof email !== "string") {
+-      return NextResponse.json({ error: "Email requis" }, { status: 400 });
+-    }
++import { NextResponse } from "next/server";
++import { getCurrentUser } from "@/lib/session";
++import { getAccessForUser } from "@/lib/access";
++
++/**
++ * GET /api/user/access
++ * Renvoie l'état d'accès de la boutique connectée (essai, abonnement, lecture
++ * seule). Utilisé par la bannière affichée en haut de l'application.
++ */
++export async function GET() {
++  const user = await getCurrentUser();
++  if (!user) {
++    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
++  }
+ 
+-    const user = await prisma.user.findUnique({
+-      where: { email: email.toLowerCase().trim() },
++  if (user.role === "superadmin") {
++    return NextResponse.json({
++      state: "SUPERADMIN",
++      readOnly: false,
++      daysLeft: null,
++      title: "Super Admin",
++      message: "",
+     });
++  }
+ 
+-    if (user) {
+-      const access = computeAccess(user);
+-
+-      // IMPORTANT : l'essai terminé n'empêche PAS la connexion (mode lecture
+-      // seule). Seul un blocage manuel du super admin empêche l'accès.
+-      if (access.state === "BLOCKED") {
+-        return NextResponse.json({
+-          blocked: true,
+-          message: access.message,
+-          access,
+-        });
+-      }
+-
+-      return NextResponse.json({
+-        blocked: false,
+-        message: access.readOnly ? access.message : null,
+-        access,
+-      });
+-    }
+-
+-    const employee = await prisma.employee.findFirst({
+-      where: { email: email.toLowerCase().trim() },
+-      include: { user: true },
++  const ownerId = (user.ownerId as string) || user.id;
++  const access = await getAccessForUser(ownerId);
++
++  // Le vendeur (employé) ne voit pas les informations d'abonnement du patron
++  if (user.role !== "admin") {
++    return NextResponse.json({
++      ...access,
++      state: access.state,
++      readOnly: access.readOnly,
++      daysLeft: null,
++      title: access.readOnly ? "Boutique en lecture seule" : "",
++      message: access.readOnly ? access.message : "",
+     });
+-
+-    if (employee) {
+-      const access = computeAccess(employee.user);
+-      if (access.state === "BLOCKED") {
+-        return NextResponse.json({
+-          blocked: true,
+-          message: "Cette boutique est bloquée. Veuillez contacter l'administrateur.",
+-          access,
+-        });
+-      }
+-      return NextResponse.json({ blocked: false, message: null, access });
+-    }
+-
+-    return NextResponse.json({ blocked: false, message: null, access: null });
+-  } catch (error: any) {
+-    return NextResponse.json(
+-      { error: error.message || "Erreur serveur" },
+-      { status: 500 }
+-    );
+   }
++
++  return NextResponse.json(access);
+ }
+diff --git a/src/app/superadmin/page.tsx b/src/app/superadmin/page.tsx
+index fd605cc..d3c0952 100644
+--- a/src/app/superadmin/page.tsx
++++ b/src/app/superadmin/page.tsx
+@@ -25,6 +25,7 @@ import {
+   Plus,
+   Tag,
+   Gift,
++  Hourglass,
+   X,
+   Banknote,
+   Settings,
+@@ -47,6 +48,8 @@ interface Boutique {
+   subscriptionStatus: string;
+   subscriptionDueDate: string | null;
+   lastPaidAt: string | null;
++  trialEndsAt: string | null;
++  trialUsed: boolean;
+   billingInterval: string;
+   referralCode: string;
+   referredById: string | null;
+@@ -65,6 +68,7 @@ interface GlobalSettings {
+   annualSubscriptionDiscount: number;
+   referralRewardMonths: number;
+   defaultMonthlyAmount: number;
++  trialDays: number;
+ }
+ 
+ interface SubscriptionPromotion {
+@@ -121,6 +125,7 @@ export default function SuperAdminDashboard() {
+     annualSubscriptionDiscount: "0",
+     referralRewardMonths: "1",
+     defaultMonthlyAmount: "10000",
++    trialDays: "15",
+   });
+   const [showPromoForm, setShowPromoForm] = useState(false);
+   const [showSettingsForm, setShowSettingsForm] = useState(false);
+@@ -184,6 +189,7 @@ export default function SuperAdminDashboard() {
+         annualSubscriptionDiscount: (data.annualSubscriptionDiscount || 0).toString(),
+         referralRewardMonths: (data.referralRewardMonths || 1).toString(),
+         defaultMonthlyAmount: (data.defaultMonthlyAmount || 10000).toString(),
++        trialDays: (data.trialDays || 15).toString(),
+       });
+     } catch (e) {
+       console.error(e);
+@@ -259,6 +265,7 @@ export default function SuperAdminDashboard() {
+         annualSubscriptionDiscount: settingsForm.annualSubscriptionDiscount,
+         referralRewardMonths: settingsForm.referralRewardMonths,
+         defaultMonthlyAmount: settingsForm.defaultMonthlyAmount,
++        trialDays: settingsForm.trialDays,
+       }),
+     });
+ 
+@@ -307,6 +314,33 @@ export default function SuperAdminDashboard() {
+     }
+   };
+ 
++  const extendTrial = async (id: string, shopName: string) => {
++    const input = prompt(
++      `Prolonger l'essai gratuit de « ${shopName} » de combien de jours ?`,
++      "15"
++    );
++    if (input === null) return;
++    const days = parseInt(input, 10);
++    if (!days || days <= 0 || days > 365) {
++      alert("Nombre de jours invalide (entre 1 et 365).");
++      return;
++    }
++
++    const res = await fetch(`/api/superadmin/boutiques/${id}/extend-trial`, {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({ days }),
++    });
++
++    const result = await res.json();
++    if (res.ok) {
++      setMessage(result.message);
++      fetchBoutiques();
++    } else {
++      alert(result.error || "Erreur lors de la prolongation de l'essai");
++    }
++  };
++
+   const deleteBoutique = async (id: string, shopName: string) => {
+     if (!confirm(`ATTENTION : la suppression est définitive.\n\nVoulez-vous vraiment supprimer la boutique « ${shopName} » et toutes ses données ?`)) return;
+ 
+@@ -390,12 +424,27 @@ export default function SuperAdminDashboard() {
+     .reduce((sum, b) => sum + (b.subscriptionAmount || 0), 0);
+   const totalSubscriptionRevenue = payments.reduce((sum, p) => sum + (p.finalAmount || 0), 0);
+   const paidCount = boutiques.filter((b) => b.subscriptionStatus === "paid" && !b.isBlocked).length;
++  const trialCount = boutiques.filter((b) => trialInfo(b) !== null).length;
+   const overdueCount = boutiques.filter((b) => {
+     if (b.isBlocked) return false;
+     if (!b.subscriptionDueDate) return true;
+     return new Date(b.subscriptionDueDate) < new Date();
+   }).length;
+ 
++  const trialInfo = (b: Boutique) => {
++    if (!b.trialEndsAt || b.subscriptionStatus === "paid") return null;
++    const days = Math.ceil((new Date(b.trialEndsAt).getTime() - Date.now()) / 86400000);
++    if (days > 0) return { label: `Essai · J-${days}`, expired: false };
++    return { label: "Essai échu", expired: true };
++  };
++
++  const statusLabel = (b: Boutique) => {
++    if (b.subscriptionStatus === "paid") return { text: "Payé", cls: "text-green-600" };
++    const t = trialInfo(b);
++    if (t) return { text: t.label, cls: t.expired ? "text-red-600" : "text-[#B87333]" };
++    return { text: "En attente", cls: "text-orange-600" };
++  };
++
+   const formatDate = (date: string | null) => {
+     if (!date) return "-";
+     return new Date(date).toLocaleDateString("fr-FR");
+@@ -455,6 +504,7 @@ export default function SuperAdminDashboard() {
+           <StatCard icon={Coins} label="MRR abonnements" value={`${totalRecurring.toLocaleString("fr-FR")} FCFA`} gradient="from-[#B76E79]/20 to-[#D4A5A5]/10" />
+           <StatCard icon={Banknote} label="CA abonnements" value={`${totalSubscriptionRevenue.toLocaleString("fr-FR")} FCFA`} gradient="from-[#B87333]/20 to-[#D4AF37]/10" />
+           <StatCard icon={AlertCircle} label="Abonnements en retard" value={overdueCount} gradient="from-orange-100/50 to-orange-50/30" />
++          <StatCard icon={Hourglass} label="Boutiques en essai" value={trialCount} gradient="from-[#D4AF37]/20 to-[#B87333]/10" />
+           <StatCard icon={Gift} label="Promotions actives" value={promotions.filter((p) => p.active).length} gradient="from-[#D4AF37]/20 to-[#B87333]/10" />
+         </div>
+ 
+@@ -477,7 +527,7 @@ export default function SuperAdminDashboard() {
+           </div>
+ 
+           {showSettingsForm ? (
+-            <form onSubmit={handleSaveSettings} className="grid grid-cols-1 md:grid-cols-3 gap-5">
++            <form onSubmit={handleSaveSettings} className="grid grid-cols-1 md:grid-cols-4 gap-5">
+               <div>
+                 <label className="block text-sm font-medium text-[#5C4033] mb-1.5">Réduction abonnement annuel (%)</label>
+                 <input
+@@ -512,6 +562,18 @@ export default function SuperAdminDashboard() {
+                   className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]"
+                 />
+               </div>
++              <div>
++                <label className="block text-sm font-medium text-[#5C4033] mb-1.5">Durée de l&apos;essai gratuit (jours)</label>
++                <input
++                  type="number"
++                  min="1"
++                  max="365"
++                  placeholder="15"
++                  value={settingsForm.trialDays}
++                  onChange={(e) => setSettingsForm({ ...settingsForm, trialDays: e.target.value })}
++                  className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]"
++                />
++              </div>
+               <div className="md:col-span-3">
+                 <button
+                   type="submit"
+@@ -523,7 +585,7 @@ export default function SuperAdminDashboard() {
+               </div>
+             </form>
+           ) : settings ? (
+-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
++            <div className="grid grid-cols-1 sm:grid-cols-4 gap-5">
+               <div className="rounded-xl bg-[#FDF8F3]/60 p-4 border border-[#D4AF37]/10">
+                 <p className="text-xs text-[#5C4033]/70 mb-1">Réduction annuelle</p>
+                 <p className="text-lg font-semibold text-[#3D2B1F]">{settings.annualSubscriptionDiscount}%</p>
+@@ -536,6 +598,10 @@ export default function SuperAdminDashboard() {
+                 <p className="text-xs text-[#5C4033]/70 mb-1">Montant mensuel par défaut</p>
+                 <p className="text-lg font-semibold text-[#3D2B1F]">{settings.defaultMonthlyAmount.toLocaleString("fr-FR")} FCFA</p>
+               </div>
++              <div className="rounded-xl bg-[#FDF8F3]/60 p-4 border border-[#D4AF37]/10">
++                <p className="text-xs text-[#5C4033]/70 mb-1">Essai gratuit</p>
++                <p className="text-lg font-semibold text-[#3D2B1F]">{settings.trialDays} jours</p>
++              </div>
+             </div>
+           ) : (
+             <p className="text-[#5C4033]/60 text-sm">Chargement des paramètres...</p>
+@@ -787,17 +853,20 @@ export default function SuperAdminDashboard() {
+                           <div className="text-xs text-[#5C4033]/70 flex items-center gap-1 mt-0.5">
+                             <CreditCard size={12} />
+                             Statut :
+-                            <span className={`font-medium ${
+-                              boutique.subscriptionStatus === "paid" ? "text-green-600" : "text-orange-600"
+-                            }`}>
+-                              {boutique.subscriptionStatus === "paid" ? "Payé" : "En attente"}
+-                            </span>
++                            <span className={`font-medium ${statusLabel(boutique).cls}`}>
++                            {statusLabel(boutique).text}
++                          </span>
+                           </div>
+                           {boutique.lastPaidAt && (
+                             <div className="text-xs text-[#5C4033]/60 mt-0.5">
+                               Dernier paiement : {formatDate(boutique.lastPaidAt)}
+                             </div>
+                           )}
++                            {boutique.trialEndsAt && boutique.subscriptionStatus !== "paid" && (
++                              <div className="text-xs text-[#B87333] font-medium mt-1 flex items-center gap-1">
++                                <Hourglass size={12} /> Fin de l&apos;essai : {formatDate(boutique.trialEndsAt)}
++                              </div>
++                            )}
+                         </td>
+                         <td className="px-6 py-5 text-center">
+                           <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#D4AF37]/10 text-[#B87333] font-medium">
+@@ -834,6 +903,14 @@ export default function SuperAdminDashboard() {
+                               {boutique.isBlocked ? <Unlock size={14} /> : <Lock size={14} />}
+                               {boutique.isBlocked ? "Débloquer" : "Bloquer"}
+                             </button>
++                            <button
++                              onClick={() => extendTrial(boutique.id, boutique.shopName)}
++                              className="px-3 py-1.5 rounded-lg bg-[#FFF8E7] text-[#B87333] text-xs font-medium border border-[#D4AF37]/20 inline-flex items-center gap-1"
++                              title="Ajouter des jours d'essai gratuit"
++                            >
++                              <Hourglass size={12} /> Prolonger
++                            </button>
++
+                             <button
+                               onClick={() => resetPassword(boutique.id)}
+                               className="inline-flex items-center gap-1 text-[#B87333] hover:text-[#5C4033] font-medium transition-colors"
+@@ -1001,10 +1078,8 @@ export default function SuperAdminDashboard() {
+                           <span className="text-[#5C4033]/70 flex items-center gap-1">
+                             <Calendar size={12} /> Échéance : {formatDate(boutique.subscriptionDueDate)}
+                           </span>
+-                          <span className={`font-medium ${
+-                            boutique.subscriptionStatus === "paid" ? "text-green-600" : "text-orange-600"
+-                          }`}>
+-                            {boutique.subscriptionStatus === "paid" ? "Payé" : "En attente"}
++                          <span className={`font-medium ${statusLabel(boutique).cls}`}>
++                            {statusLabel(boutique).text}
+                           </span>
+                         </div>
+                         {boutique.lastPaidAt && (
+@@ -1012,6 +1087,11 @@ export default function SuperAdminDashboard() {
+                             Dernier paiement : {formatDate(boutique.lastPaidAt)}
+                           </div>
+                         )}
++                          {boutique.trialEndsAt && boutique.subscriptionStatus !== "paid" && (
++                            <div className="text-xs text-[#B87333] font-medium mt-1 flex items-center gap-1">
++                              <Hourglass size={12} /> Fin de l&apos;essai : {formatDate(boutique.trialEndsAt)}
++                            </div>
++                          )}
+                       </div>
+                     </div>
+ 
+@@ -1056,6 +1136,14 @@ export default function SuperAdminDashboard() {
+                         {boutique.isBlocked ? <Unlock size={12} /> : <Lock size={12} />}
+                         {boutique.isBlocked ? "Débloquer" : "Bloquer"}
+                       </button>
++                      <button
++                        onClick={() => extendTrial(boutique.id, boutique.shopName)}
++                        className="px-3 py-1.5 rounded-lg bg-[#FFF8E7] text-[#B87333] text-xs font-medium border border-[#D4AF37]/20 inline-flex items-center gap-1"
++                        title="Ajouter des jours d'essai gratuit"
++                      >
++                        <Hourglass size={12} /> Prolonger
++                      </button>
++
+                       <button
+                         onClick={() => resetPassword(boutique.id)}
+                         className="px-3 py-1.5 rounded-lg bg-[#FDF8F3] text-[#B87333] text-xs font-medium border border-[#D4AF37]/20 inline-flex items-center gap-1"
+diff --git a/src/components/AppLayout.tsx b/src/components/AppLayout.tsx
+index 6d1dd15..ed9c383 100644
+--- a/src/components/AppLayout.tsx
++++ b/src/components/AppLayout.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+ import { Sidebar } from "./Sidebar";
++import { TrialBanner } from "./TrialBanner";
+ import { Trans } from "./Trans";
+ import { useState } from "react";
+ import { Menu, X } from "lucide-react";
+@@ -59,6 +60,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
+         <div className="fixed bottom-20 left-80 w-64 h-64 bg-[#B87333]/10 rounded-full blur-[100px] pointer-events-none hidden lg:block" />
+ 
+         <div className="relative z-10">
++          {/* État de l'essai gratuit / de l'abonnement */}
++          <TrialBanner />
+           <Trans>{children}</Trans>
+         </div>
+       </main>

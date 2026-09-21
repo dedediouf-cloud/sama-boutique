@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdmin } from "@/lib/roles";
+import { invalidateAccess } from "@/lib/access";
 import { getNextDueDate, addMonths, getAnnualAmount } from "@/lib/subscription";
 
 export async function POST(
@@ -77,6 +78,9 @@ export async function POST(
         isBlocked: false,
       },
     });
+
+    // L'accès complet est rétabli immédiatement (cache d'accès de 60 s)
+    invalidateAccess(id);
 
     await prisma.subscriptionPayment.create({
       data: {

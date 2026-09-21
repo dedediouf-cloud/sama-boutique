@@ -1,6 +1,7 @@
 "use client";
 
 import { Sidebar } from "./Sidebar";
+import { TrialBanner } from "./TrialBanner";
 import { Trans } from "./Trans";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
@@ -59,6 +60,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="fixed bottom-20 left-80 w-64 h-64 bg-[#B87333]/10 rounded-full blur-[100px] pointer-events-none hidden lg:block" />
 
         <div className="relative z-10">
+          {/* État de l'essai gratuit / de l'abonnement */}
+          <TrialBanner />
           <Trans>{children}</Trans>
         </div>
       </main>

@@ -12,8 +12,14 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdmin } from "@/lib/roles";
+import { assertWritable } from "@/lib/access";
 
 export async function POST(request: NextRequest) {
+  // Verrou essai/abonnement : modifie les données uniquement si la boutique
+  // n'est pas en lecture seule (essai gratuit terminé).
+  const __locked = await assertWritable();
+  if (__locked) return __locked;
+
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });

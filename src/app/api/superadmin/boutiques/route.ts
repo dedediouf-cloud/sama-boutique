@@ -4,7 +4,6 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { isSuperAdmin } from "@/lib/roles";
-import { getNextDueDate } from "@/lib/subscription";
 
 function generateReferralCode(base: string) {
   const clean = base
@@ -35,6 +34,8 @@ export async function GET() {
       subscriptionAmount: true,
       subscriptionStatus: true,
       subscriptionDueDate: true,
+      trialEndsAt: true,
+      trialUsed: true,
       lastPaidAt: true,
       billingInterval: true,
       referralCode: true,
@@ -92,7 +93,19 @@ export async function POST(req: NextRequest) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const interval: "monthly" | "annual" = billingInterval === "annual" ? "annual" : "monthly";
-    const dueDate = getNextDueDate(new Date(), interval);
+
+    // Les boutiques créées à la main par le super admin démarrent elles aussi
+    // avec l'essai gratuit (durée réglable dans les Paramètres globaux).
+    const globalSettings = await prisma.globalSettings.findUnique({
+      where: { id: "default" },
+    });
+    const trialDays =
+      globalSettings?.trialDays && globalSettings.trialDays > 0
+        ? globalSettings.trialDays
+        : 15;
+    const trialEndsAt = new Date(Date.now() + trialDays * 24 * 60 * 60 * 1000);
+    trialEndsAt.setUTCHours(23, 59, 59, 999);
+    const dueDate = trialEndsAt;
 
     let referralCode = generateReferralCode(shopSlug);
     while (await prisma.user.findUnique({ where: { referralCode } })) {
@@ -108,8 +121,10 @@ export async function POST(req: NextRequest) {
         shopSlug: shopSlug.toLowerCase().replace(/\s+/g, "-"),
         phone,
         subscriptionAmount: parseFloat(subscriptionAmount) || 0,
-        subscriptionStatus: "pending",
+        subscriptionStatus: "trial",
         subscriptionDueDate: dueDate,
+        trialEndsAt,
+        trialUsed: true,
         billingInterval: interval,
         referralCode,
       },

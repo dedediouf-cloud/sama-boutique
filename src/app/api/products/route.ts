@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
+import { assertWritable } from "@/lib/access";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -18,6 +19,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  // Verrou essai/abonnement : modifie les données uniquement si la boutique
+  // n'est pas en lecture seule (essai gratuit terminé).
+  const __locked = await assertWritable();
+  if (__locked) return __locked;
+
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
@@ -39,6 +45,11 @@ export async function POST(request: Request) {
 
 // ✅ NOUVEAU : Suppression en masse pour l'admin
 export async function DELETE() {
+  // Verrou essai/abonnement : modifie les données uniquement si la boutique
+  // n'est pas en lecture seule (essai gratuit terminé).
+  const __locked = await assertWritable();
+  if (__locked) return __locked;
+
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });

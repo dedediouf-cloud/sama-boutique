@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { assertWritable } from "@/lib/access";
 
 // GET: Récupérer les paramètres de paiement de la boutique connectée
 export async function GET() {
@@ -43,6 +44,11 @@ export async function GET() {
 
 // PATCH: Sauvegarder / mettre à jour les paramètres de paiement
 export async function PATCH(request: Request) {
+  // Verrou essai/abonnement : modifie les données uniquement si la boutique
+  // n'est pas en lecture seule (essai gratuit terminé).
+  const __locked = await assertWritable();
+  if (__locked) return __locked;
+
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });

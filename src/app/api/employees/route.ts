@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/session";
 import bcrypt from "bcryptjs";
+import { assertWritable } from "@/lib/access";
 
 export async function GET() {
   const user = await requireAdmin();
@@ -16,6 +17,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  // Verrou essai/abonnement : modifie les données uniquement si la boutique
+  // n'est pas en lecture seule (essai gratuit terminé).
+  const __locked = await assertWritable();
+  if (__locked) return __locked;
+
   const user = await requireAdmin();
   if (!user) return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
 

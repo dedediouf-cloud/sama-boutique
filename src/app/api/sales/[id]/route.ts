@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
+import { assertWritable } from "@/lib/access";
 
 // DELETE /api/sales/[id] - Annuler une vente (ADMIN ONLY)
 // Signature standard Next.js 15+ (corrige l'erreur RouteHandlerConfig sur Vercel)
@@ -8,6 +9,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // Verrou essai/abonnement : modifie les données uniquement si la boutique
+  // n'est pas en lecture seule (essai gratuit terminé).
+  const __locked = await assertWritable();
+  if (__locked) return __locked;
+
   const { id } = await params;
 
   const user = await getCurrentUser();

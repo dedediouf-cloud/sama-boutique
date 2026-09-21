@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { annualSubscriptionDiscount, referralRewardMonths, defaultMonthlyAmount } = body;
+    const { annualSubscriptionDiscount, referralRewardMonths, defaultMonthlyAmount, trialDays } = body;
 
     const settings = await prisma.globalSettings.upsert({
       where: { id: "default" },
@@ -38,11 +38,13 @@ export async function POST(req: NextRequest) {
         annualSubscriptionDiscount: parseFloat(annualSubscriptionDiscount) || 0,
         referralRewardMonths: parseInt(referralRewardMonths) || 1,
         defaultMonthlyAmount: parseFloat(defaultMonthlyAmount) || 10000,
+        trialDays: parseInt(trialDays) > 0 ? parseInt(trialDays) : 15,
       },
       update: {
         annualSubscriptionDiscount: parseFloat(annualSubscriptionDiscount) || 0,
         referralRewardMonths: parseInt(referralRewardMonths) || 1,
         defaultMonthlyAmount: parseFloat(defaultMonthlyAmount) || 10000,
+        trialDays: parseInt(trialDays) > 0 ? parseInt(trialDays) : 15,
       },
     });
 

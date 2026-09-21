@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdmin } from "@/lib/roles";
+import { invalidateAccess } from "@/lib/access";
 
 export async function POST(
   req: NextRequest,
@@ -16,6 +17,8 @@ export async function POST(
   try {
     const { id } = await params;
     const { isBlocked } = await req.json();
+
+    invalidateAccess(id);
 
     const boutique = await prisma.user.update({
       where: { id },

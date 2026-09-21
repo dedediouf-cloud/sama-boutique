@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { getNextDueDate, addMonths } from "@/lib/subscription";
+import { addMonths } from "@/lib/subscription";
 
 function slugify(text: string) {
   return text
@@ -51,7 +51,16 @@ export async function POST(request: Request) {
 
     const interval: "monthly" | "annual" = billingInterval === "annual" ? "annual" : "monthly";
     const now = new Date();
-    const dueDate = getNextDueDate(now, interval);
+
+    // === ESSAI GRATUIT ===
+    // La nouvelle boutique démarre avec un essai gratuit (15 jours par défaut,
+    // durée réglable dans les Paramètres globaux du super admin).
+    // L'échéance d'abonnement est calée sur la fin de l'essai : le premier
+    // paiement démarre donc exactement à la fin de l'essai, sans jour perdu.
+    const trialDays = settings.trialDays && settings.trialDays > 0 ? settings.trialDays : 15;
+    const trialEndsAt = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
+    trialEndsAt.setUTCHours(23, 59, 59, 999);
+    const dueDate = trialEndsAt;
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -78,8 +87,10 @@ export async function POST(request: Request) {
         shopSlug,
         phone,
         subscriptionAmount: settings.defaultMonthlyAmount,
-        subscriptionStatus: "pending",
+        subscriptionStatus: "trial",
         subscriptionDueDate: dueDate,
+        trialEndsAt,
+        trialUsed: true,
         billingInterval: interval,
         referralCode: referralCodeStr,
         referredById: referrerId || null,
