@@ -423,14 +423,6 @@ export default function SuperAdminDashboard() {
     .filter((b) => !b.isBlocked)
     .reduce((sum, b) => sum + (b.subscriptionAmount || 0), 0);
   const totalSubscriptionRevenue = payments.reduce((sum, p) => sum + (p.finalAmount || 0), 0);
-  const paidCount = boutiques.filter((b) => b.subscriptionStatus === "paid" && !b.isBlocked).length;
-  const trialCount = boutiques.filter((b) => trialInfo(b) !== null).length;
-  const overdueCount = boutiques.filter((b) => {
-    if (b.isBlocked) return false;
-    if (!b.subscriptionDueDate) return true;
-    return new Date(b.subscriptionDueDate) < new Date();
-  }).length;
-
   const trialInfo = (b: Boutique) => {
     if (!b.trialEndsAt || b.subscriptionStatus === "paid") return null;
     const days = Math.ceil((new Date(b.trialEndsAt).getTime() - Date.now()) / 86400000);
@@ -444,6 +436,14 @@ export default function SuperAdminDashboard() {
     if (t) return { text: t.label, cls: t.expired ? "text-red-600" : "text-[#B87333]" };
     return { text: "En attente", cls: "text-orange-600" };
   };
+
+  const paidCount = boutiques.filter((b) => b.subscriptionStatus === "paid" && !b.isBlocked).length;
+  const trialCount = boutiques.filter((b) => trialInfo(b) !== null).length;
+  const overdueCount = boutiques.filter((b) => {
+    if (b.isBlocked) return false;
+    if (!b.subscriptionDueDate) return true;
+    return new Date(b.subscriptionDueDate) < new Date();
+  }).length;
 
   const formatDate = (date: string | null) => {
     if (!date) return "-";
