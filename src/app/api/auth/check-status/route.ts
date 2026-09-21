@@ -1,47 +1,42 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { NextResponse } from "next/server";
+import { getCurrentUser } from "@/lib/session";
+import { getAccessForUser } from "@/lib/access";
 
-export async function POST(req: NextRequest) {
-  try {
-    const { email } = await req.json();
-
-    if (!email || typeof email !== "string") {
-      return NextResponse.json({ error: "Email requis" }, { status: 400 });
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
-    });
-
-    if (user) {
-      return NextResponse.json({
-        blocked: user.isBlocked,
-        message: user.isBlocked
-          ? "Votre compte est bloqué. Veuillez contacter l'administrateur pour régulariser votre abonnement."
-          : null,
-      });
-    }
-
-    const employee = await prisma.employee.findFirst({
-      where: { email: email.toLowerCase().trim() },
-      include: { user: true },
-    });
-
-    if (employee) {
-      const blocked = employee.user.isBlocked;
-      return NextResponse.json({
-        blocked,
-        message: blocked
-          ? "Cette boutique est bloquée. Veuillez contacter l'administrateur."
-          : null,
-      });
-    }
-
-    return NextResponse.json({ blocked: false, message: null });
-  } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || "Erreur serveur" },
-      { status: 500 }
-    );
+/**
+ * GET /api/user/access
+ * Renvoie l'état d'accès de la boutique connectée (essai, abonnement, lecture
+ * seule). Utilisé par la bannière affichée en haut de l'application.
+ */
+export async function GET() {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
+
+  if (user.role === "superadmin") {
+    return NextResponse.json({
+      state: "SUPERADMIN",
+      readOnly: false,
+      daysLeft: null,
+      title: "Super Admin",
+      message: "",
+    });
+  }
+
+  const ownerId = (user.ownerId as string) || user.id;
+  const access = await getAccessForUser(ownerId);
+
+  // Le vendeur (employé) ne voit pas les informations d'abonnement du patron
+  if (user.role !== "admin") {
+    return NextResponse.json({
+      ...access,
+      state: access.state,
+      readOnly: access.readOnly,
+      daysLeft: null,
+      title: access.readOnly ? "Boutique en lecture seule" : "",
+      message: access.readOnly ? access.message : "",
+    });
+  }
+
+  return NextResponse.json(access);
 }
