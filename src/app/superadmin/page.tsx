@@ -33,8 +33,21 @@ import {
   Repeat,
   UserPlus,
   Search,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { getAnnualAmount } from "@/lib/subscription";
+
+interface CompteSuperAdmin {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  usingWeakPassword: boolean;
+}
 
 interface Boutique {
   id: string;
@@ -134,6 +147,16 @@ export default function SuperAdminDashboard() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [message, setMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [compte, setCompte] = useState<CompteSuperAdmin | null>(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [showPasswords, setShowPasswords] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
 
   const filteredBoutiques = boutiques.filter((b) => {
     const term = searchTerm.toLowerCase();
@@ -197,7 +220,7 @@ export default function SuperAdminDashboard() {
   };
 
   useEffect(() => {
-    Promise.all([fetchBoutiques(), fetchPromotions(), fetchPayments(), fetchSettings()]).finally(() => setLoading(false));
+    Promise.all([fetchBoutiques(), fetchPromotions(), fetchPayments(), fetchSettings(), fetchCompte()]).finally(() => setLoading(false));
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -293,6 +316,74 @@ export default function SuperAdminDashboard() {
 
     const result = await res.json();
     alert(result.message || result.error || "Mot de passe mis à jour");
+  };
+
+  const fetchCompte = async () => {
+    try {
+      const res = await fetch("/api/superadmin/account");
+      if (!res.ok) return;
+      setCompte(await res.json());
+    } catch {
+      /* silencieux : ne doit jamais bloquer le tableau de bord */
+    }
+  };
+
+  const ouvrirModalMotDePasse = () => {
+    setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    setPasswordError("");
+    setShowPasswords(false);
+    setShowPasswordModal(true);
+  };
+
+  const changerMonMotDePasse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError("");
+    setChangingPassword(true);
+
+    try {
+      const res = await fetch("/api/superadmin/account/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(passwordForm),
+      });
+
+      const texte = await res.text();
+      let result: any = {};
+      try {
+        result = JSON.parse(texte);
+      } catch {
+        result = { error: texte.slice(0, 200) || "Réponse inattendue du serveur" };
+      }
+
+      if (!res.ok) {
+        setPasswordError(result.error || "Erreur lors du changement de mot de passe");
+        setChangingPassword(false);
+        return;
+      }
+
+      setShowPasswordModal(false);
+      setMessage(result.message || "Mot de passe changé avec succès");
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      await fetchCompte();
+    } catch (err: any) {
+      setPasswordError(err?.message || "Erreur réseau");
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  /* Indicateur de solidité du nouveau mot de passe */
+  const forceMotDePasse = (mdp: string) => {
+    let score = 0;
+    if (mdp.length >= 8) score++;
+    if (mdp.length >= 12) score++;
+    if (/[A-Z]/.test(mdp) && /[a-z]/.test(mdp)) score++;
+    if (/[0-9]/.test(mdp)) score++;
+    if (/[^A-Za-z0-9]/.test(mdp)) score++;
+    if (score <= 2) return { label: "Faible", couleur: "bg-red-500", largeur: "w-1/4", texte: "text-red-600" };
+    if (score === 3) return { label: "Moyen", couleur: "bg-amber-500", largeur: "w-2/4", texte: "text-amber-600" };
+    if (score === 4) return { label: "Bon", couleur: "bg-lime-500", largeur: "w-3/4", texte: "text-lime-600" };
+    return { label: "Excellent", couleur: "bg-green-500", largeur: "w-full", texte: "text-green-600" };
   };
 
   const toggleBlock = async (id: string, current: boolean) => {
@@ -481,15 +572,55 @@ export default function SuperAdminDashboard() {
               <p className="text-[#5C4033] text-sm">Suivi complet de vos boutiques, abonnements et campagnes promotionnelles</p>
             </div>
           </div>
-          <div className="glass rounded-2xl px-5 py-2.5 flex items-center gap-2 text-sm text-[#5C4033]">
-            <Sparkles size={16} className="text-[#D4AF37]" />
-            <span>{totalBoutiques} boutique{sPlural(totalBoutiques)}</span>
+          <div className="flex items-center gap-3">
+            <div className="glass rounded-2xl px-5 py-2.5 flex items-center gap-2 text-sm text-[#5C4033]">
+              <Sparkles size={16} className="text-[#D4AF37]" />
+              <span>{totalBoutiques} boutique{sPlural(totalBoutiques)}</span>
+            </div>
+            <button
+              onClick={ouvrirModalMotDePasse}
+              className={`rounded-2xl px-4 py-2.5 flex items-center gap-2 text-sm font-medium transition-colors ${
+                compte?.usingWeakPassword
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : "glass text-[#5C4033] hover:bg-[#D4AF37]/10"
+              }`}
+              title="Changer mon mot de passe"
+            >
+              {compte?.usingWeakPassword ? <ShieldAlert size={16} /> : <KeyRound size={16} />}
+              <span>Mon compte</span>
+            </button>
           </div>
         </div>
 
         {message && (
           <div className={`p-4 rounded-2xl mb-6 text-sm ${message.includes("succès") || message.includes("payé") || message.includes("bloquée") || message.includes("débloquée") || message.includes("créée") ? "bg-green-50/80 border border-green-200 text-green-700" : "bg-red-50/80 border border-red-200 text-red-600"}`}>
             {message}
+          </div>
+        )}
+
+        {/* Alerte : mot de passe par défaut encore actif */}
+        {compte?.usingWeakPassword && (
+          <div className="rounded-2xl border-2 border-red-300 bg-red-50/90 p-5">
+            <div className="flex flex-col md:flex-row md:items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-red-600 flex items-center justify-center shrink-0">
+                <ShieldAlert size={24} className="text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-red-800 text-base">
+                  Sécurité : votre compte utilise encore le mot de passe par défaut
+                </p>
+                <p className="text-sm text-red-700 mt-1">
+                  <strong>demo123</strong> est public (il figure dans la documentation du projet) : n&apos;importe
+                  qui peut se connecter à votre espace Super Admin. Changez-le maintenant — cela prend 20 secondes.
+                </p>
+              </div>
+              <button
+                onClick={ouvrirModalMotDePasse}
+                className="px-5 py-3 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors shrink-0"
+              >
+                Changer maintenant
+              </button>
+            </div>
           </div>
         )}
 
@@ -1342,6 +1473,199 @@ export default function SuperAdminDashboard() {
             </div>
           )}
         </div>
+
+        {/* ── Fenêtre : changer mon mot de passe ── */}
+        {showPasswordModal && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => !changingPassword && setShowPasswordModal(false)}
+            />
+
+            <div className="relative w-full max-w-lg glass-strong rounded-2xl p-6 sm:p-7 shadow-2xl border-t-4 border-[#D4AF37] max-h-[92vh] overflow-y-auto">
+              <button
+                onClick={() => !changingPassword && setShowPasswordModal(false)}
+                className="absolute top-4 right-4 p-2 rounded-lg text-[#8A7A6D] hover:text-[#3D2B1F] hover:bg-black/5"
+                aria-label="Fermer"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="flex items-start gap-3 mb-5 pr-8">
+                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#D4AF37] to-[#B87333] flex items-center justify-center shrink-0">
+                  <KeyRound size={20} className="text-white" />
+                </div>
+                <div>
+                  <h3 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#3D2B1F]">
+                    Changer mon mot de passe
+                  </h3>
+                  <p className="text-sm text-[#5C4033] mt-1">
+                    Compte : <strong>{compte?.email || "Super Admin"}</strong>
+                  </p>
+                </div>
+              </div>
+
+              {compte?.usingWeakPassword && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-5 flex items-start gap-2">
+                  <ShieldAlert size={16} className="text-red-600 mt-0.5 shrink-0" />
+                  <p className="text-[13px] text-red-700">
+                    Votre mot de passe actuel est celui par défaut (<strong>demo123</strong>), accessible publiquement.
+                    Choisissez un mot de passe personnel dès maintenant.
+                  </p>
+                </div>
+              )}
+
+              {passwordError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl mb-5 text-sm">
+                  {passwordError}
+                </div>
+              )}
+
+              <form onSubmit={changerMonMotDePasse} className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-[#5C4033] mb-1.5">
+                    Mot de passe actuel
+                  </label>
+                  <input
+                    type={showPasswords ? "text" : "password"}
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]"
+                    placeholder="Votre mot de passe actuel"
+                    autoComplete="current-password"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-[#5C4033] mb-1.5">
+                    Nouveau mot de passe
+                  </label>
+                  <input
+                    type={showPasswords ? "text" : "password"}
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]"
+                    placeholder="8 caractères minimum"
+                    autoComplete="new-password"
+                    required
+                  />
+
+                  {passwordForm.newPassword && (
+                    <div className="mt-2">
+                      <div className="h-1.5 w-full bg-[#3D2B1F]/10 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${forceMotDePasse(passwordForm.newPassword).couleur} ${forceMotDePasse(passwordForm.newPassword).largeur}`}
+                        />
+                      </div>
+                      <p className={`text-xs mt-1 font-medium ${forceMotDePasse(passwordForm.newPassword).texte}`}>
+                        Solidité : {forceMotDePasse(passwordForm.newPassword).label}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-[#5C4033] mb-1.5">
+                    Confirmer le nouveau mot de passe
+                  </label>
+                  <input
+                    type={showPasswords ? "text" : "password"}
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F]"
+                    placeholder="Ressaisissez le nouveau mot de passe"
+                    autoComplete="new-password"
+                    required
+                  />
+                  {passwordForm.confirmPassword &&
+                    passwordForm.confirmPassword !== passwordForm.newPassword && (
+                      <p className="text-xs text-red-600 mt-1">
+                        Les deux mots de passe ne correspondent pas encore
+                      </p>
+                    )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPasswords((v) => !v)}
+                  className="flex items-center gap-2 text-xs text-[#5C4033]/80 hover:text-[#3D2B1F]"
+                >
+                  {showPasswords ? <EyeOff size={14} /> : <Eye size={14} />}
+                  {showPasswords ? "Masquer les mots de passe" : "Afficher les mots de passe"}
+                </button>
+
+                <div className="bg-[#FDF8F3]/70 border border-[#D4AF37]/20 rounded-xl p-3.5">
+                  <p className="text-xs font-semibold text-[#5C4033] mb-2">Le mot de passe doit :</p>
+                  <ul className="text-xs text-[#5C4033]/90 space-y-1">
+                    <li className={passwordForm.newPassword.length >= 8 ? "text-green-600" : ""}>
+                      {passwordForm.newPassword.length >= 8 ? "✓" : "•"} contenir au moins 8 caractères
+                    </li>
+                    <li
+                      className={
+                        passwordForm.newPassword &&
+                        passwordForm.newPassword === passwordForm.confirmPassword
+                          ? "text-green-600"
+                          : ""
+                      }
+                    >
+                      {passwordForm.newPassword &&
+                      passwordForm.newPassword === passwordForm.confirmPassword
+                        ? "✓"
+                        : "•"}{" "}
+                      être identique dans les deux champs
+                    </li>
+                    <li
+                      className={
+                        passwordForm.newPassword &&
+                        !passwordForm.newPassword.toLowerCase().includes("demo123")
+                          ? "text-green-600"
+                          : ""
+                      }
+                    >
+                      {passwordForm.newPassword &&
+                      !passwordForm.newPassword.toLowerCase().includes("demo123")
+                        ? "✓"
+                        : "•"}{" "}
+                      ne pas être « demo123 » ni un mot de passe courant
+                    </li>
+                  </ul>
+                  <p className="text-[11px] text-[#5C4033]/60 mt-2">
+                    Astuce : 3 mots simples sans rapport entre eux (ex. « mangue-train-bleu-2026 ») sont plus solides
+                    et plus faciles à retenir qu&apos;une suite de symboles.
+                  </p>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                  <button
+                    type="submit"
+                    disabled={
+                      changingPassword ||
+                      !passwordForm.currentPassword ||
+                      passwordForm.newPassword.length < 8 ||
+                      passwordForm.newPassword !== passwordForm.confirmPassword
+                    }
+                    className="flex-1 py-3 rounded-xl btn-luxe font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {changingPassword ? "Enregistrement..." : "Changer mon mot de passe"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswordModal(false)}
+                    disabled={changingPassword}
+                    className="px-5 py-3 rounded-xl border border-[#3D2B1F]/15 text-[#5C4033] font-medium hover:bg-black/5 disabled:opacity-50"
+                  >
+                    Annuler
+                  </button>
+                </div>
+
+                <p className="text-[11px] text-[#5C4033]/60 text-center">
+                  Vous resterez connecté après le changement. Pensez à noter votre nouveau mot de passe en lieu sûr.
+                </p>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </SuperAdminProtectedRoute>
   );
