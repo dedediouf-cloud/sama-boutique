@@ -6,7 +6,12 @@ import { getNextDueDate } from "../src/lib/subscription";
 async function main() {
   const hashedPassword = await bcrypt.hash("demo123", 10);
 
-  // Créer le super administrateur s'il n'existe pas
+  // ⚠️ SÉCURITÉ : on NE réinitialise PAS le mot de passe d'un super admin existant.
+  // Avant, ce script remettait le mot de passe à "demo123" à chaque exécution,
+  // ce qui écrasait le mot de passe de production (très dangereux si lancé
+  // avec la DATABASE_URL de production).
+  // Pour forcer la réinitialisation : SEED_RESET_PASSWORD=1 npm run db:seed
+  const forceReset = process.env.SEED_RESET_PASSWORD === "1";
   const existingSuperAdmin = await prisma.superAdmin.findUnique({
     where: { email: "superadmin@boutique.com" },
   });
@@ -19,11 +24,14 @@ async function main() {
       },
     });
     console.log("Super admin created: superadmin@boutique.com / demo123");
-  } else {
+  } else if (forceReset) {
     await prisma.superAdmin.update({
       where: { email: "superadmin@boutique.com" },
       data: { password: hashedPassword },
     });
+    console.log("⚠️ Mot de passe super admin RÉINITIALISÉ à demo123 (SEED_RESET_PASSWORD=1)");
+  } else {
+    console.log("Super admin déjà présent : mot de passe laissé INTACT (aucune modification).");
   }
 
   const existing = await prisma.user.findUnique({
