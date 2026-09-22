@@ -341,7 +341,7 @@ export default function SuperAdminDashboard() {
     setChangingPassword(true);
 
     try {
-      const res = await fetch("/api/superadmin/account/password", {
+      const res = await fetch("/api/superadmin/account", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(passwordForm),
