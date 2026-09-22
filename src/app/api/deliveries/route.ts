@@ -3,23 +3,62 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/session";
 import { assertWritable } from "@/lib/access";
 
-export async function GET() {
+/**
+ * GET /api/deliveries
+ *   (sans paramètre)  → 200 livraisons les plus récentes
+ *   ?limit=all        → tout l'historique
+ *
+ * ⚡ `select` ciblé : on ne renvoie que les champs affichés (payload ÷ 10).
+ */
+export async function GET(request?: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
   const ownerId = user.ownerId || user.id;
 
+  let take: number | undefined = 200;
+  if (request) {
+    const brutal = new URL(request.url).searchParams.get("limit");
+    if (brutal === "all") take = undefined;
+    else if (brutal) {
+      const n = parseInt(brutal, 10);
+      if (Number.isFinite(n) && n > 0) take = Math.min(n, 2000);
+    }
+  }
+
   const deliveries = await prisma.delivery.findMany({
     where: { userId: ownerId },
-    include: {
+    take,
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      status: true,
+      address: true,
+      phone: true,
+      notes: true,
+      deliveryDate: true,
+      createdAt: true,
+      updatedAt: true,
+      saleId: true,
+      userId: true,
       sale: {
-        include: {
-          customer: true,
-          items: { include: { product: true } },
+        select: {
+          id: true,
+          total: true,
+          finalTotal: true,
+          createdAt: true,
+          customer: { select: { id: true, name: true, phone: true } },
+          items: {
+            select: {
+              id: true,
+              quantity: true,
+              price: true,
+              product: { select: { id: true, name: true } },
+            },
+          },
         },
       },
     },
-    orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json(deliveries);

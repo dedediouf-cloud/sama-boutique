@@ -5,22 +5,71 @@ import { getPaymentProvider } from "@/lib/payments";
 import { getMerchantCredentials } from "@/lib/payments/credentials";
 import { assertWritable } from "@/lib/access";
 
-export async function GET() {
+/** Nombre de ventes renvoyées par défaut (les plus récentes) */
+export const VENTES_PAR_DEFAUT = 200;
+const VENTES_MAX = 2000;
+
+/**
+ * GET /api/sales
+ *   (sans paramètre)      → 200 ventes les plus récentes
+ *   ?limit=500            → 500 ventes les plus récentes
+ *   ?limit=all            → tout l'historique (exports, sauvegardes)
+ *
+ * ⚡ Optimisations :
+ *   - `take` : évite de renvoyer tout l'historique à chaque ouverture du POS
+ *   - `select` ciblé : on ne renvoie QUE les champs affichés par l'interface.
+ *     Les `transactions` et `promotion` ne sont jamais utilisés côté écran :
+ *     on ne les charge donc pas depuis la base (payload divisé par ~25).
+ */
+export async function GET(request?: Request) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
   const ownerId = user.ownerId || user.id;
 
+  let take: number | undefined = VENTES_PAR_DEFAUT;
+  if (request) {
+    const brutal = new URL(request.url).searchParams.get("limit");
+    if (brutal === "all") take = undefined;
+    else if (brutal) {
+      const n = parseInt(brutal, 10);
+      if (Number.isFinite(n) && n > 0) take = Math.min(n, VENTES_MAX);
+    }
+  }
+
   const sales = await prisma.sale.findMany({
     where: { userId: ownerId },
-    include: {
-      items: { include: { product: true } },
-      customer: true,
-      transactions: true,
-      delivery: true,
-      promotion: true,
-    },
+    take,
     orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      total: true,
+      discount: true,
+      finalTotal: true,
+      paymentMethod: true,
+      paymentStatus: true,
+      paymentRef: true,
+      deliveryType: true,
+      earnedFidelityPoints: true,
+      createdAt: true,
+      userId: true,
+      customerId: true,
+      employeeId: true,
+      promotionId: true,
+      cashSessionId: true,
+      // Uniquement le nécessaire pour l'affichage de la liste
+      items: {
+        select: {
+          id: true,
+          quantity: true,
+          price: true,
+          productId: true,
+          product: { select: { id: true, name: true, price: true } },
+        },
+      },
+      customer: { select: { id: true, name: true, phone: true } },
+      delivery: { select: { id: true, status: true, address: true } },
+    },
   });
 
   return NextResponse.json(sales);

@@ -125,6 +125,13 @@ export default function SalesPage() {
 
   const [expandedSaleId, setExpandedSaleId] = useState<string | null>(null);
 
+  // ⚡ Pagination : on ne charge que les ventes récentes (payload ÷ 25).
+  //    Le bouton « Charger plus » augmente cette limite.
+  const salesLimitRef = useRef(200);
+  const [salesLimit, setSalesLimit] = useState(200);
+  const [toutCharge, setToutCharge] = useState(false);
+  const [chargementPlus, setChargementPlus] = useState(false);
+
   const [cashSession, setCashSession] = useState<any>(null);
 
   const [showCashModal, setShowCashModal] = useState(false);
@@ -317,15 +324,20 @@ export default function SalesPage() {
 
   }, []);
 
-  const fetchSales = useCallback(async () => {
+  const fetchSales = useCallback(async (limite?: number) => {
 
     try {
 
-      const res = await fetch("/api/sales");
+      const l = limite ?? salesLimitRef.current;
+      const res = await fetch(`/api/sales?limit=${l}`);
 
       const data = await res.json();
 
-      if (res.ok && Array.isArray(data)) setSales(data);
+      if (res.ok && Array.isArray(data)) {
+        setSales(data);
+        // Si le serveur renvoie moins que demandé, on a tout l'historique
+        if (data.length < l) setToutCharge(true);
+      }
 
     } catch (err) {}
 
@@ -2183,6 +2195,24 @@ export default function SalesPage() {
                 Historique des ventes
 
               </h2>
+
+              {!toutCharge && sales.length > 0 && (
+                <button
+                  type="button"
+                  disabled={chargementPlus}
+                  onClick={async () => {
+                    setChargementPlus(true);
+                    const nouvelle = salesLimitRef.current + 300;
+                    salesLimitRef.current = nouvelle;
+                    setSalesLimit(nouvelle);
+                    await fetchSales(nouvelle);
+                    setChargementPlus(false);
+                  }}
+                  className="px-3 py-2 rounded-xl border border-[#D4AF37]/30 text-[#B87333] text-xs font-medium hover:bg-[#D4AF37]/10 transition-colors disabled:opacity-50"
+                >
+                  {chargementPlus ? "Chargement..." : `Charger plus (${sales.length} affichées)`}
+                </button>
+              )}
 
             </div>
 

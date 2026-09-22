@@ -9,9 +9,26 @@ export async function GET() {
 
   const ownerId = user.ownerId || user.id;
 
+  // ⚡ On ne renvoie que le NOM du fournisseur (l'interface n'affiche que ça),
+  //    au lieu de l'objet fournisseur complet dupliqué pour chaque produit.
   const products = await prisma.product.findMany({
     where: { userId: ownerId },
-    include: { supplier: true },
+    select: {
+      id: true,
+      name: true,
+      description: true,
+      price: true,
+      quantity: true,
+      lowStock: true,
+      category: true,
+      imageUrl: true,
+      barcode: true,
+      supplierId: true,
+      createdAt: true,
+      updatedAt: true,
+      userId: true,
+      supplier: { select: { id: true, name: true, phone: true } },
+    },
     orderBy: { createdAt: "desc" },
   });
 
