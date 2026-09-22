@@ -4,15 +4,144 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdmin } from "@/lib/roles";
 import bcrypt from "bcryptjs";
-import { MOTS_DE_PASSE_INTERDITS } from "../route";
 
 /**
- * POST /api/superadmin/account/password
- * { currentPassword, newPassword, confirmPassword }
+ * ============================================================================
+ *  COMPTE SUPER ADMIN — un seul fichier, deux méthodes
+ * ============================================================================
+ *  ⚠️  NE PAS déplacer ce fichier et NE PAS le fragmenter en plusieurs routes.
+ *      Il doit rester à cet emplacement exact :
+ *          src/app/api/superadmin/account/route.ts
  *
- * Permet au super administrateur connecté de changer SON propre mot de passe
- * depuis l'interface, sans passer par un script en local.
+ *  GET  /api/superadmin/account   → informations du compte connecté
+ *  POST /api/superadmin/account   → changement de mot de passe
+ *
+ *  (Les deux méthodes sont volontairement dans le même fichier : cela évite
+ *   tout import entre fichiers de route, que Next.js refuse.)
+ * ============================================================================
  */
+
+/** Mots de passe refusés (publics, connus, ou trop proches du mot de passe par défaut) */
+const MOTS_DE_PASSE_INTERDITS = [
+  "demo123",
+  "demo1234",
+  "demo",
+  "superadmin",
+  "super-admin",
+  "password",
+  "passw0rd",
+  "motdepasse",
+  "mot de passe",
+  "12345678",
+  "123456789",
+  "1234567890",
+  "administrateur",
+  "admin123",
+  "samaboutique",
+  "samaboutique123",
+  "qwerty123",
+  "azerty123",
+  "iloveyou",
+  "welcome123",
+];
+
+/** Vérifie qu'un mot de passe respecte les règles de sécurité */
+function validerMotDePasse(motDePasse: string): { ok: boolean; error?: string } {
+  const mdp = String(motDePasse || "");
+
+  if (!mdp) {
+    return { ok: false, error: "Le mot de passe est obligatoire" };
+  }
+
+  if (mdp.length < 8) {
+    return {
+      ok: false,
+      error: "Le nouveau mot de passe doit contenir au moins 8 caractères",
+    };
+  }
+
+  const minuscule = mdp.toLowerCase().trim();
+  if (
+    MOTS_DE_PASSE_INTERDITS.some((interdit) => {
+      const mot = interdit.toLowerCase();
+      return minuscule === mot || minuscule.includes(mot);
+    })
+  ) {
+    return {
+      ok: false,
+      error:
+        "Ce mot de passe est trop courant (ou proche du mot de passe par défaut). Choisis-en un autre.",
+    };
+  }
+
+  if (/^[0-9]+$/.test(mdp)) {
+    return {
+      ok: false,
+      error:
+        "Choisis un mot de passe moins simple (lettres + chiffres, ou plusieurs mots)",
+    };
+  }
+
+  if (/^(.)\1+$/.test(mdp)) {
+    return {
+      ok: false,
+      error: "Choisis un mot de passe moins simple (évite les caractères répétés)",
+    };
+  }
+
+  return { ok: true };
+}
+
+/* ========================================================================== */
+/*  GET — informations du compte super admin connecté                        */
+/* ========================================================================== */
+
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session || !isSuperAdmin(session.user?.role)) {
+    return NextResponse.json({ error: "Non autorisé" }, { status: 401 });
+  }
+
+  try {
+    const compte = await prisma.superAdmin.findUnique({
+      where: { id: session.user.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        createdAt: true,
+        updatedAt: true,
+        password: true,
+      },
+    });
+
+    if (!compte) {
+      return NextResponse.json({ error: "Compte introuvable" }, { status: 404 });
+    }
+
+    const usingWeakPassword = await bcrypt.compare("demo123", compte.password);
+
+    return NextResponse.json({
+      id: compte.id,
+      email: compte.email,
+      name: compte.name,
+      createdAt: compte.createdAt,
+      updatedAt: compte.updatedAt,
+      usingWeakPassword,
+    });
+  } catch (error: any) {
+    return NextResponse.json(
+      { error: error.message || "Erreur serveur" },
+      { status: 500 }
+    );
+  }
+}
+
+/* ========================================================================== */
+/*  POST — changement du mot de passe                                        */
+/*  Body : { currentPassword, newPassword, confirmPassword }                 */
+/* ========================================================================== */
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session || !isSuperAdmin(session.user?.role)) {
@@ -33,13 +162,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (newPassword.length < 8) {
-      return NextResponse.json(
-        { error: "Le nouveau mot de passe doit contenir au moins 8 caractères" },
-        { status: 400 }
-      );
-    }
-
     if (newPassword !== confirmPassword) {
       return NextResponse.json(
         { error: "Les deux nouveaux mots de passe ne correspondent pas" },
@@ -47,22 +169,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const minuscule = newPassword.toLowerCase();
-    if (MOTS_DE_PASSE_INTERDITS.some((m) => minuscule === m || minuscule.includes(m))) {
-      return NextResponse.json(
-        {
-          error:
-            "Ce mot de passe est trop courant (ou proche du mot de passe par défaut). Choisis-en un autre.",
-        },
-        { status: 400 }
-      );
-    }
-
-    if (/^(.)\1+$/.test(newPassword) || /^[0-9]+$/.test(newPassword)) {
-      return NextResponse.json(
-        { error: "Choisis un mot de passe moins simple (mélange lettres, chiffres, symboles)" },
-        { status: 400 }
-      );
+    const validation = validerMotDePasse(newPassword);
+    if (!validation.ok) {
+      return NextResponse.json({ error: validation.error }, { status: 400 });
     }
 
     /* ── Vérification du mot de passe actuel ───────────────────────────── */
