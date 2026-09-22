@@ -1,0 +1,575 @@
+diff --git a/change-superadmin-password.js b/change-superadmin-password.js
+index d25808f..069851b 100644
+--- a/change-superadmin-password.js
++++ b/change-superadmin-password.js
+@@ -1,50 +1,159 @@
+-﻿const { PrismaClient } = require('@prisma/client');
+-const bcrypt = require('bcryptjs');
++/**
++ * ============================================================================
++ *  CHANGER LE MOT DE PASSE DU SUPER ADMIN
++ * ============================================================================
++ *
++ *  Utilisation :
++ *      node change-superadmin-password.js NouveauMotDePasse2026
++ *      node change-superadmin-password.js NouveauMotDePasse2026 "postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require"
++ *
++ *  ⚠️  SANS le 2e argument, le script utilise la DATABASE_URL trouvée dans
++ *      ton fichier .env — c'est souvent la base LOCALE, pas la production.
++ *      Le script t'affiche TOUJOURS la base qu'il modifie avant de la modifier.
++ *
++ *  BASE PAR DÉFAUT : superadmin@boutique.com
++ *  Pour un autre compte : MODIFIER_EMAIL=autre@mail.com node change-superadmin-password.js ...
++ * ============================================================================
++ */
++
++const urlArg = process.argv[3];
++if (urlArg) process.env.DATABASE_URL = urlArg;
++
++const { PrismaClient } = require("@prisma/client");
++const bcrypt = require("bcryptjs");
++
++const EMAIL = process.env.MODIFIER_EMAIL || "superadmin@boutique.com";
++const nouveauMotDePasse = process.argv[2];
++
++function masquer(url) {
++  if (!url) return "(non définie)";
++  return url.replace(/:\/\/([^:]+):[^@]*@/, "://$1:***@");
++}
++
++function typer(url) {
++  if (!url || !url.trim()) return "inconnue";
++  if (url.startsWith("file:")) return "locale";
++  if (/^postgres(ql)?:\/\//i.test(url)) {
++    let hote = "";
++    try {
++      hote = new URL(url).hostname;
++    } catch {}
++    return /localhost|127\.0\.0\.1/.test(hote) ? "locale" : "production";
++  }
++  return "inconnue";
++}
++
++const url = process.env.DATABASE_URL || "";
++const type = typer(url);
+ 
+ async function main() {
+-  const prisma = new PrismaClient();
+-  
+-  const newPassword = process.argv[2];
+-  
+-  if (!newPassword) {
+-    console.log("❌ Usage: node change-superadmin-password.js TON_MOT_DE_PASSE");
++  console.log("\n🔑 CHANGEMENT DU MOT DE PASSE SUPER ADMIN\n");
++
++  /* ── Contrôle des arguments ─────────────────────────────────────────── */
++  if (!nouveauMotDePasse) {
++    console.log("❌ Usage : node change-superadmin-password.js NouveauMotDePasse2026");
++    console.log('   (option) : node change-superadmin-password.js NouveauMotDePasse2026 "postgresql://...neon.tech/neondb"');
+     process.exit(1);
+   }
+-  
+-  if (newPassword.length < 8) {
+-    console.log("❌ Le mot de passe doit faire au moins 8 caractères");
++
++  if (nouveauMotDePasse.length < 8) {
++    console.log("❌ Le mot de passe doit faire au moins 8 caractères.");
+     process.exit(1);
+   }
+-  
++
++  /* ── Sur QUELLE base va-t-on écrire ? ───────────────────────────────── */
++  console.log(`   Compte ciblé : ${EMAIL}`);
++  console.log(`   Base ciblée  : ${masquer(url)}`);
++  console.log("");
++
++  if (type === "locale") {
++    console.log("   ⚠️  ATTENTION : cette base est LOCALE (développement).");
++    console.log("       Ta PRODUCTION ne sera PAS modifiée.");
++    console.log("       Pour changer le mot de passe en production :");
++    console.log('       node change-superadmin-password.js MonPass "postgresql://...neon.tech/neondb?sslmode=require"');
++    console.log("");
++  } else if (type === "production") {
++    console.log("   ✅ Base distante détectée → c'est bien un changement en PRODUCTION.");
++    console.log("");
++  } else {
++    console.log("   ⚠️  Base non reconnue — vérifie l'URL ci-dessus avant de continuer.");
++    console.log("");
++  }
++
++  const prisma = new PrismaClient(url ? { datasourceUrl: url } : {});
++
+   try {
+-    console.log("🔄 Connexion à la base de données Neon...");
+-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+-    
++    /* ── Le compte existe-t-il ? ─────────────────────────────────────── */
++    const existe = await prisma.superAdmin.findUnique({ where: { email: EMAIL } });
++    if (!existe) {
++      console.log(`❌ Aucun super admin avec l'email ${EMAIL} dans CETTE base.`);
++      console.log("   → Soit tu vises la mauvaise base, soit le compte n'existe pas encore.");
++      console.log("   → Liste des super admins présents dans cette base :");
++      const tous = await prisma.superAdmin.findMany({ select: { email: true } });
++      if (tous.length === 0) console.log("     (aucun)");
++      tous.forEach((s) => console.log("     - " + s.email));
++      console.log("");
++      process.exitCode = 1;
++      return;
++    }
++
++    /* ── Écriture ────────────────────────────────────────────────────── */
++    const hashed = await bcrypt.hash(nouveauMotDePasse, 10);
+     await prisma.superAdmin.update({
+-      where: { email: "superadmin@boutique.com" },
+-      data: { password: hashedPassword }
++      where: { email: EMAIL },
++      data: { password: hashed },
+     });
+-    
++
++    /* ── Vérification réelle (on relit la base et on compare) ────────── */
++    const relu = await prisma.superAdmin.findUnique({ where: { email: EMAIL } });
++    const ok = await bcrypt.compare(nouveauMotDePasse, relu.password);
++    const ancienMarche = await bcrypt.compare("demo123", relu.password);
++
++    console.log("");
++    if (ok) {
++      console.log("✅ SUCCÈS VÉRIFIÉ — le nouveau mot de passe fonctionne.");
++    } else {
++      console.log("❌ PROBLÈME : le mot de passe écrit ne correspond pas. Réessaie.");
++      process.exitCode = 1;
++      return;
++    }
++
++    if (ancienMarche) {
++      console.log("   ⚠️  Anomalie : \"demo123\" fonctionne aussi (mots de passe identiques ?).");
++    } else {
++      console.log('   ✅ L\'ancien mot de passe "demo123" ne fonctionne plus sur cette base.');
++    }
++
++    console.log("");
++    console.log(`   Base modifiée : ${type === "production" ? "PRODUCTION" : type === "locale" ? "LOCALE" : "inconnue"}`);
++    console.log(`   ${masquer(url)}`);
+     console.log("");
+-    console.log("✅ SUCCÈS ! Le mot de passe du Super Admin a été changé.");
+-    console.log("Email : superadmin@boutique.com");
+-    console.log("Nouveau mot de passe : " + newPassword);
++    console.log("→ Pour tester :");
++    console.log("   1. Ouvre ton site (Vercel) sur /superadmin/login");
++    console.log("   2. Déconnecte-toi si besoin, puis Ctrl + Shift + R");
++    console.log("   3. Connecte-toi avec le nouveau mot de passe");
+     console.log("");
+-    console.log("→ Maintenant :");
+-    console.log("   1. Va sur ton site Vercel");
+-    console.log("   2. Déconnecte-toi");
+-    console.log("   3. Appuie sur Ctrl + Shift + R");
+-    console.log("   4. Reconnecte-toi avec le nouveau mot de passe");
+   } catch (error) {
+-    console.error("");
+-    console.error("❌ ERREUR : " + error.message);
++    const msg = String(error.message || error).split("\n")[0];
++    console.log("");
++    console.log("❌ ERREUR : " + msg);
++    if (/must start with the protocol/i.test(msg)) {
++      console.log("");
++      console.log("→ Le client Prisma installé ne correspond pas à cette base.");
++      console.log("  Pour une base PostgreSQL (Neon) :");
++      console.log("    npx prisma generate --schema=prisma/schema.prod.prisma");
++    } else if (/authentication|password|credentials/i.test(msg)) {
++      console.log("");
++      console.log("→ Identifiants incorrects dans l'URL de connexion.");
++    } else if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|Can't reach database server|P1001/i.test(msg)) {
++      console.log("");
++      console.log("→ Serveur injoignable : hôte mal orthographié, base Neon en veille, ou connexion bloquée.");
++    }
+     console.log("");
+-    console.log("Cause probable :");
+-    console.log("- Tu n'as pas défini la DATABASE_URL");
+-    console.log("- Ou le Super Admin n'existe pas");
++    process.exitCode = 1;
+   } finally {
+     await prisma.$disconnect();
+   }
+ }
+ 
+-main();
+\ No newline at end of file
++main();
+diff --git a/package.json b/package.json
+index d46dc9d..493b59a 100644
+--- a/package.json
++++ b/package.json
+@@ -12,7 +12,9 @@
+     "db:migrate": "prisma migrate dev",
+     "db:generate": "prisma generate",
+     "vercel-build": "npx prisma generate --schema=prisma/schema.prod.prisma && npx prisma db push --schema=prisma/schema.prod.prisma --accept-data-loss && next build",
+-    "audit:securite": "node scripts/audit-securite.js"
++    "audit:securite": "node scripts/audit-securite.js",
++    "audit:local": "prisma generate --schema=prisma/schema.prisma && node scripts/audit-securite.js \"file:./dev.db\"",
++    "audit:prod": "prisma generate --schema=prisma/schema.prod.prisma && node scripts/audit-securite.js"
+   },
+   "dependencies": {
+     "@auth/prisma-adapter": "^2.11.2",
+diff --git a/scripts/audit-securite.js b/scripts/audit-securite.js
+index 74e4a32..f1fef81 100644
+--- a/scripts/audit-securite.js
++++ b/scripts/audit-securite.js
+@@ -1,20 +1,29 @@
+ /**
+  * ============================================================================
+- *  AUDIT DE SÉCURITÉ — comptes utilisant encore le mot de passe "demo123"
++ *  AUDIT DE SÉCURITÉ — comptes utilisant encore un mot de passe de démonstration
+  * ============================================================================
+- *  Usage :
+- *      DATABASE_URL="postgresql://...neon..." node scripts/audit-securite.js
+- *      (ou simplement : npm run audit:securite)
+  *
+- *  Ce script :
+- *    1. vérifie qu'aucune route publique de réinitialisation ne subsiste
+- *    2. teste chaque compte (super admin, boutiques, vendeurs) contre "demo123"
+- *    3. affiche un rapport clair avec les actions à faire
++ *  ⚠️  L'OUTIL ANALYSE UNE SEULE BASE À LA FOIS.
++ *      Par défaut : celle de ton fichier .env (souvent la base LOCALE).
++ *      Pour auditer la PRODUCTION, donne l'URL Neon en argument :
+  *
+- *  Il ne MODIFIE RIEN. Lecture seule.
++ *        Windows PowerShell :
++ *          node scripts/audit-securite.js "postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require"
++ *
++ *        Mac / Linux :
++ *          node scripts/audit-securite.js "postgresql://..."
++ *
++ *        Ou via la variable d'environnement :
++ *          $env:DATABASE_URL="postgresql://..."   (PowerShell)
++ *          npm run audit:securite
++ *
++ *  Ce script ne MODIFIE RIEN. Lecture seule.
+  * ============================================================================
+  */
+ 
++const argUrl = process.argv[2] && !process.argv[2].startsWith("-") ? process.argv[2] : null;
++if (argUrl) process.env.DATABASE_URL = argUrl;
++
+ const { PrismaClient } = require("@prisma/client");
+ const bcrypt = require("bcryptjs");
+ const fs = require("fs");
+@@ -22,29 +31,141 @@ const path = require("path");
+ 
+ const MOT_DE_PASSE_FAIBLE = "demo123";
+ 
+-const prisma = new PrismaClient();
+-
+ const c = {
+   rouge: (t) => `\x1b[31m${t}\x1b[0m`,
+   vert: (t) => `\x1b[32m${t}\x1b[0m`,
+   jaune: (t) => `\x1b[33m${t}\x1b[0m`,
++  bleu: (t) => `\x1b[36m${t}\x1b[0m`,
+   gras: (t) => `\x1b[1m${t}\x1b[0m`,
+   gris: (t) => `\x1b[90m${t}\x1b[0m`,
++  fondRouge: (t) => `\x1b[41m\x1b[97m${t}\x1b[0m`,
++  fondVert: (t) => `\x1b[42m\x1b[30m${t}\x1b[0m`,
++  fondJaune: (t) => `\x1b[43m\x1b[30m${t}\x1b[0m`,
+ };
+ 
++/* Désactive les couleurs si la sortie n'est pas un terminal (fichier, pipe) */
++const sansCouleur = !process.stdout.isTTY;
++if (sansCouleur) Object.keys(c).forEach((k) => (c[k] = (t) => t));
++
+ function titre(t) {
+   console.log("\n" + c.gras(t));
+-  console.log("─".repeat(t.length));
++  console.log("─".repeat(Math.max(t.length, 20)));
+ }
+ 
++/* ─────────────── Analyse de l'URL de connexion ─────────────── */
++function analyserUrl(url) {
++  if (!url || typeof url !== "string" || url.trim() === "") {
++    return { definie: false, type: "inconnue", hote: null, masquee: "(non définie)" };
++  }
++  const u = url.trim();
++  if (u.startsWith("file:")) {
++    return { definie: true, type: "locale", hote: u, masquee: u };
++  }
++  if (/^postgres(ql)?:\/\//i.test(u)) {
++    let hote = "";
++    try {
++      hote = new URL(u).hostname;
++    } catch {
++      hote = "(hôte illisible)";
++    }
++    const local = /localhost|127\.0\.0\.1|\[::1\]/.test(hote);
++    const neon = /neon\.tech/i.test(hote);
++    return {
++      definie: true,
++      type: local ? "locale" : "production",
++      hote,
++      masquee: u.replace(/:\/\/([^:]+):[^@]*@/, "://$1:***@"),
++      neon,
++    };
++  }
++  return { definie: true, type: "inconnue", hote: null, masquee: "(URL non reconnue)" };
++}
++
++const urlBrute = process.env.DATABASE_URL || "";
++const info = analyserUrl(urlBrute);
++
++const prisma = new PrismaClient(
++  urlBrute
++    ? { datasourceUrl: urlBrute, log: [] }
++    : { log: [] }
++);
++
+ async function main() {
+   console.log(c.gras("\n🔒 AUDIT DE SÉCURITÉ — SamaBoutique"));
+-  console.log(c.gris(`   Base : ${(process.env.DATABASE_URL || "").replace(/:[^:@]*@/, ":***@").slice(0, 70)}…`));
++
++  /* ═══════════ 0. QUELLE BASE EST ANALYSÉE ? ═══════════ */
++  console.log("");
++  if (!info.definie) {
++    console.log(c.fondRouge(" AUCUNE BASE INDIQUÉE "));
++    console.log(c.rouge("   DATABASE_URL n'est pas défini.\n"));
++    console.log("   Donne l'URL de ta base en argument :");
++    console.log(c.gris('   node scripts/audit-securite.js "postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require"'));
++    console.log(c.gris('   node scripts/audit-securite.js "file:./prisma/dev.db"   ← pour ta base locale\n'));
++    process.exitCode = 1;
++    return;
++  }
++
++  console.log(`   Base analysée  : ${c.gras(info.masquee)}`);
++
++  if (info.type === "locale") {
++    console.log(c.fondJaune(" BASE LOCALE — PAS LA PRODUCTION "));
++    console.log(
++      c.jaune("   ⚠️  Tu analyses ta base de DÉVELOPPEMENT.")
++    );
++    console.log(
++      c.jaune("       Les résultats ci-dessous ne concernent PAS tes vraies boutiques.")
++    );
++    console.log(
++      c.gris("       Pour auditer la production, relance avec l'URL Neon :")
++    );
++    console.log(
++      c.gris('       node scripts/audit-securite.js "postgresql://...neon.tech/neondb?sslmode=require"')
++    );
++  } else if (info.type === "production") {
++    console.log(c.fondVert(" BASE DE PRODUCTION "));
++    console.log(
++      c.vert(`   ✅ Tu analyses une base distante${info.neon ? " (Neon)" : ""}.`)
++    );
++    if (info.neon) {
++      console.log(c.gris("       C'est bien ta vraie base de production. Résultats fiables."));
++    }
++  } else {
++    console.log(c.jaune("   ⚠️  Type de base non reconnu — vérifie l'URL ci-dessus."));
++  }
++
++  /* ═══════════ 1. Test de connexion ═══════════ */
++  titre("0. Connexion à la base");
++  try {
++    await prisma.$connect();
++    await prisma.$queryRawUnsafe("SELECT 1");
++    console.log(c.vert("   ✅ Connexion réussie"));
++  } catch (e) {
++    const msg = String(e.message || e).split("\n")[0];
++    console.log(c.rouge(`   ❌ Connexion impossible : ${msg}`));
++    if (/must start with the protocol/i.test(msg)) {
++      console.log(c.jaune("\n   → Le client Prisma installé ne correspond pas à ta base."));
++      console.log(c.gris("     Pour auditer la PRODUCTION PostgreSQL, régénère d'abord le client :"));
++      console.log(c.gris("       npx prisma generate --schema=prisma/schema.prod.prisma"));
++      console.log(c.gris("     (puis relance l'audit)"));
++    } else if (/authentication|password|credentials/i.test(msg)) {
++      console.log(c.jaune("\n   → Mot de passe ou utilisateur incorrect dans l'URL."));
++      console.log(c.gris("     Reprends la DATABASE_URL exacte dans Vercel → Settings → Environment Variables."));
++    } else if (/ENOTFOUND|EAI_AGAIN|getaddrinfo|Can't reach database server|P1001/i.test(msg)) {
++      console.log(c.jaune("\n   → Serveur injoignable. Causes possibles :"));
++      console.log(c.gris("     • l'hôte dans l'URL est mal orthographié"));
++      console.log(c.gris("     • la base Neon est en veille (recharge la page du dashboard Neon une fois)"));
++      console.log(c.gris("     • tu es hors ligne / un pare-feu bloque le port 5432"));
++    } else if (/database .* does not exist|P1003/i.test(msg)) {
++      console.log(c.jaune("\n   → Base inexistante : vérifie le nom de la base en fin d'URL (souvent /neondb)."));
++    }
++    process.exitCode = 1;
++    return;
++  }
+ 
+   const problemes = [];
+ 
+-  /* ─────────────── 1. Routes de réinitialisation publiques ─────────────── */
+-  titre("1. Routes publiques dangereuses");
++  /* ═══════════ 2. Routes publiques dangereuses ═══════════ */
++  titre("1. Routes publiques dangereuses (uniquement en local)");
+ 
+   const routesSensibles = [
+     "src/app/api/seed/route.ts",
+@@ -53,21 +174,20 @@ async function main() {
+ 
+   let routeTrouvee = false;
+   for (const r of routesSensibles) {
+-    const existe = fs.existsSync(path.join(process.cwd(), r));
+-    if (existe) {
++    if (fs.existsSync(path.join(process.cwd(), r))) {
+       routeTrouvee = true;
+       console.log(c.rouge(`   ❌ PRÉSENT : ${r}`));
+-      console.log(c.gris(`      → n'importe qui peut appeler /api/seed et remettre les mots de passe à "demo123"`));
++      console.log(c.gris('      → n\'importe qui peut appeler /api/seed et remettre les mots de passe à "demo123"'));
+       problemes.push(`Route publique dangereuse : ${r}`);
+     } else {
+       console.log(c.vert(`   ✅ absent : ${r}`));
+     }
+   }
+   if (!routeTrouvee) {
+-    console.log(c.vert("\n   ✅ Aucune route publique de réinitialisation trouvée."));
++    console.log(c.gris("\n   (vérification sur les fichiers de ce dossier — elle ne dépend pas de la base)"));
+   }
+ 
+-  /* ─────────────── 2. Super administrateurs ─────────────── */
++  /* ═══════════ 3. Super administrateurs ═══════════ */
+   titre("2. Super administrateurs");
+ 
+   let superAdmins = [];
+@@ -76,11 +196,11 @@ async function main() {
+       select: { id: true, email: true, password: true },
+     });
+   } catch (e) {
+-    console.log(c.jaune(`   ⚠️ Lecture impossible (${e.message.split("\n")[0]})`));
++    console.log(c.jaune(`   ⚠️ Lecture impossible (${String(e.message || e).split("\n")[0]})`));
+   }
+ 
+   if (superAdmins.length === 0) {
+-    console.log(c.gris("   (aucun super admin en base)"));
++    console.log(c.gris("   (aucun super admin dans cette base)"));
+   }
+ 
+   for (const sa of superAdmins) {
+@@ -93,7 +213,7 @@ async function main() {
+     }
+   }
+ 
+-  /* ─────────────── 3. Boutiques ─────────────── */
++  /* ═══════════ 4. Boutiques ═══════════ */
+   titre("3. Boutiques (commerçants)");
+ 
+   let boutiques = [];
+@@ -103,10 +223,10 @@ async function main() {
+       orderBy: { createdAt: "asc" },
+     });
+   } catch (e) {
+-    console.log(c.jaune(`   ⚠️ Lecture impossible (${e.message.split("\n")[0]})`));
++    console.log(c.jaune(`   ⚠️ Lecture impossible (${String(e.message || e).split("\n")[0]})`));
+   }
+ 
+-  console.log(c.gris(`   ${boutiques.length} boutique(s) en base`));
++  console.log(c.gris(`   ${boutiques.length} boutique(s) dans cette base`));
+ 
+   let nbBoutiquesFaibles = 0;
+   for (const b of boutiques) {
+@@ -122,11 +242,11 @@ async function main() {
+       problemes.push(`Boutique avec mot de passe faible : ${b.email}`);
+     }
+   }
+-  if (nbBoutiquesFaibles === 0) {
++  if (nbBoutiquesFaibles === 0 && boutiques.length > 0) {
+     console.log(c.vert("   ✅ Aucune boutique n'utilise le mot de passe de démonstration"));
+   }
+ 
+-  /* ─────────────── 4. Vendeurs (employés) ─────────────── */
++  /* ═══════════ 5. Vendeurs ═══════════ */
+   titre("4. Vendeurs (employés)");
+ 
+   let employes = [];
+@@ -135,10 +255,10 @@ async function main() {
+       select: { id: true, email: true, name: true, password: true },
+     });
+   } catch (e) {
+-    console.log(c.jaune(`   ⚠️ Lecture impossible (${e.message.split("\n")[0]})`));
++    console.log(c.jaune(`   ⚠️ Lecture impossible (${String(e.message || e).split("\n")[0]})`));
+   }
+ 
+-  console.log(c.gris(`   ${employes.length} vendeur(s) en base`));
++  console.log(c.gris(`   ${employes.length} vendeur(s) dans cette base`));
+ 
+   let nbEmployesFaibles = 0;
+   for (const e of employes) {
+@@ -149,53 +269,69 @@ async function main() {
+       problemes.push(`Vendeur avec mot de passe faible : ${e.email}`);
+     }
+   }
+-  if (nbEmployesFaibles === 0) {
++  if (nbEmployesFaibles === 0 && employes.length > 0) {
+     console.log(c.vert("   ✅ Aucun vendeur n'utilise le mot de passe de démonstration"));
+   }
+ 
+-  /* ─────────────── RAPPORT FINAL ─────────────── */
++  /* ═══════════ RAPPORT ═══════════ */
+   titre("RAPPORT");
+ 
++  console.log(c.gris(`   Base : ${info.masquee}`));
++  console.log(c.gris(`   Type : ${info.type === "production" ? "PRODUCTION" : info.type === "locale" ? "LOCALE (développement)" : "inconnu"}\n`));
++
+   if (problemes.length === 0) {
+-    console.log(c.vert("   🎉 Tout est bon. Aucun problème détecté.\n"));
++    console.log(c.vert("   🎉 Aucun problème détecté sur cette base.\n"));
+   } else {
+     console.log(c.rouge(`   ${problemes.length} problème(s) détecté(s) :\n`));
+     problemes.forEach((p, i) => console.log(c.rouge(`   ${i + 1}. ${p}`)));
+ 
+     console.log(c.gras("\n   QUE FAIRE :"));
+     if (problemes.some((p) => p.includes("Route publique"))) {
+-      console.log("   → Supprimer la route :  git rm src/app/api/seed/route.ts");
++      console.log("   → git rm -r src/app/api/seed");
+     }
+     if (problemes.some((p) => p.includes("Super admin"))) {
+-      console.log("   → Changer le mot de passe super admin :");
+-      console.log(c.gris('     DATABASE_URL="..." node change-superadmin-password.js MonNouveauMotDePasse2026'));
++      console.log("   → Changer le mot de passe super admin (sur CETTE base) :");
++      console.log(c.gris("     node change-superadmin-password.js MonNouveauMotDePasse2026"));
+     }
+     if (problemes.some((p) => p.includes("Boutique") || p.includes("Vendeur"))) {
+-      console.log("   → Depuis l'interface super admin → « Mot de passe » sur chaque boutique concernée,");
++      console.log("   → Depuis l'interface super admin → « Mot de passe » sur chaque boutique,");
+       console.log("     ou « Employés » → « Réinitialiser mot de passe » pour les vendeurs.");
+       console.log(c.gris("     (s'il s'agit de comptes de démonstration, tu peux aussi les supprimer)"));
+     }
+     console.log("");
+   }
+ 
+-  /* ─────────────── Contrôle de la configuration ─────────────── */
++  /* ═══════════ Rappel si on a analysé la base locale ═══════════ */
++  if (info.type === "locale") {
++    console.log(c.fondJaune(" RAPPEL "));
++    console.log(c.jaune("   Ces résultats concernent TA BASE LOCALE, pas ta production."));
++    console.log(c.gris("   Si tu viens de changer le mot de passe super admin en PRODUCTION,"));
++    console.log(c.gris("   il est normal que la base locale affiche encore l'ancien."));
++    console.log("");
++    console.log(c.gras("   Pour vérifier la PRODUCTION, relance avec l'URL Neon (une seule ligne) :"));
++    console.log(c.bleu('   node scripts/audit-securite.js "postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require"'));
++    console.log("");
++  }
++
++  /* ═══════════ Configuration Vercel ═══════════ */
+   titre("Configuration Vercel recommandée");
+-  const variables = ["RESEND_API_KEY", "CRON_SECRET", "NEXTAUTH_SECRET"];
+-  for (const v of variables) {
++  for (const v of ["RESEND_API_KEY", "CRON_SECRET", "NEXTAUTH_SECRET"]) {
+     const ok = Boolean(process.env[v]);
+     console.log(
+       (ok ? c.vert("   ✅ ") : c.jaune("   ⚠️  ")) +
+         v +
+-        (ok ? "" : c.gris("  (non définie dans cet environnement)"))
++        (ok ? "" : c.gris("  (non définie dans cet environnement local — normal)"))
+     );
+   }
++  console.log(
++    c.gris("\n   Ces variables se configurent dans Vercel → Settings → Environment Variables.")
++  );
+   console.log("");
+ }
+ 
+ main()
+   .catch((e) => {
+     console.error(c.rouge("\n❌ Erreur : " + (e.message || e)));
+-    console.error(c.gris("   Vérifie que DATABASE_URL est bien défini et pointe vers ta base."));
+-    process.exit(1);
++    process.exitCode = 1;
+   })
+   .finally(() => prisma.$disconnect());
