@@ -1,0 +1,431 @@
+diff --git a/src/app/login/page.tsx b/src/app/login/page.tsx
+index 3aba15f..18000cd 100644
+--- a/src/app/login/page.tsx
++++ b/src/app/login/page.tsx
+@@ -5,6 +5,7 @@ import { useState } from "react";
+ import { useRouter } from "next/navigation";
+ import { useTranslation } from "@/lib/i18n";
+ import { Trans } from "@/components/Trans";
++import { PasswordInput } from "@/components/PasswordInput";
+ 
+ export default function LoginPage() {
+   const [email, setEmail] = useState("");
+@@ -92,13 +93,13 @@ export default function LoginPage() {
+ 
+               <div>
+                 <label className="block text-sm font-medium text-[#5C4033] mb-1.5">{t("Mot de passe")}</label>
+-                <input
+-                  type="password"
+-                  value={password}
+-                  onChange={(e) => setPassword(e.target.value)}
+-                  className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] placeholder-[#B87333]/50"
+-                  placeholder="••••••••"
+-                  required
++                <PasswordInput
++                    value={password}
++                    onChange={(e) => setPassword(e.target.value)}
++                    className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] placeholder-[#B87333]/50"
++                    placeholder="••••••••"
++                    autoComplete="current-password"
++                    required
+                 />
+               </div>
+ 
+diff --git a/src/app/register/page.tsx b/src/app/register/page.tsx
+index 60a9ea0..c1fadb8 100644
+--- a/src/app/register/page.tsx
++++ b/src/app/register/page.tsx
+@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
+ import Link from "next/link";
+ import { useTranslation } from "@/lib/i18n";
+ import { Trans } from "@/components/Trans";
++import { PasswordInput } from "@/components/PasswordInput";
+ import { Repeat, Gift } from "lucide-react";
+ 
+ function RegisterForm() {
+@@ -111,13 +112,13 @@ function RegisterForm() {
+ 
+             <div>
+               <label className="block text-sm font-medium text-[#5C4033] mb-1.5">{t("Mot de passe")}</label>
+-              <input
+-                type="password"
+-                value={form.password}
+-                onChange={(e) => setForm({ ...form, password: e.target.value })}
+-                className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] placeholder-[#B87333]/50"
+-                placeholder="••••••••"
+-                required
++              <PasswordInput
++                  value={form.password}
++                  onChange={(e) => setForm({ ...form, password: e.target.value })}
++                  className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] placeholder-[#B87333]/50"
++                  placeholder="••••••••"
++                  autoComplete="new-password"
++                  required
+               />
+             </div>
+ 
+diff --git a/src/app/superadmin/login/page.tsx b/src/app/superadmin/login/page.tsx
+index ca3acf2..750148d 100644
+--- a/src/app/superadmin/login/page.tsx
++++ b/src/app/superadmin/login/page.tsx
+@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
+ import { useState } from "react";
+ import { useTranslation } from "@/lib/i18n";
+ import { Trans } from "@/components/Trans";
++import { PasswordInput } from "@/components/PasswordInput";
+ 
+ export default function SuperAdminLoginPage() {
+   const router = useRouter();
+@@ -86,12 +87,13 @@ export default function SuperAdminLoginPage() {
+             </div>
+             <div>
+               <label className="block text-sm font-medium text-[#5C4033] mb-1.5">{t("Mot de passe")}</label>
+-              <input
+-                type="password"
+-                value={password}
+-                onChange={(e) => setPassword(e.target.value)}
+-                className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] placeholder-[#B87333]/50"
+-                required
++              <PasswordInput
++                  value={password}
++                  onChange={(e) => setPassword(e.target.value)}
++                  className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] placeholder-[#B87333]/50"
++                  placeholder="••••••••"
++                  autoComplete="current-password"
++                  required
+               />
+             </div>
+             <button
+diff --git a/src/components/AppLayout.tsx b/src/components/AppLayout.tsx
+index ed9c383..529cb0a 100644
+--- a/src/components/AppLayout.tsx
++++ b/src/components/AppLayout.tsx
+@@ -3,18 +3,45 @@
+ import { Sidebar } from "./Sidebar";
+ import { TrialBanner } from "./TrialBanner";
+ import { Trans } from "./Trans";
+-import { useState } from "react";
++import { useEffect, useState } from "react";
+ import { Menu, X } from "lucide-react";
+ 
+ export function AppLayout({ children }: { children: React.ReactNode }) {
+   const [sidebarOpen, setSidebarOpen] = useState(false);
+ 
++  // Est-on sur un écran large ? Sert à NE PAS monter la barre latérale de
++  // bureau sur mobile (avant, elle était masquée en CSS mais restait montée :
++  // double DOM, double abonnement à la session → travail inutile sur mobile).
++  const [estBureau, setEstBureau] = useState(false);
++
++  useEffect(() => {
++    if (typeof window === "undefined" || !window.matchMedia) return;
++    const mq = window.matchMedia("(min-width: 1024px)");
++    const maj = () => setEstBureau(mq.matches);
++    maj();
++    mq.addEventListener("change", maj);
++    return () => mq.removeEventListener("change", maj);
++  }, []);
++
++  // Empêche la page derrière le menu de défiler quand le tiroir est ouvert
++  // (sur mobile, le doigt faisait défiler l'arrière-plan au lieu du menu).
++  useEffect(() => {
++    if (!sidebarOpen || typeof document === "undefined") return;
++    const precedent = document.body.style.overflow;
++    document.body.style.overflow = "hidden";
++    return () => {
++      document.body.style.overflow = precedent;
++    };
++  }, [sidebarOpen]);
++
+   return (
+     <div className="flex min-h-screen bg-[#FFFBF5]">
+-      {/* Desktop Sidebar - hidden on mobile */}
+-      <div className="hidden lg:block">
+-        <Sidebar />
+-      </div>
++      {/* Barre latérale de bureau — montée uniquement sur écran large */}
++      {estBureau && (
++        <div className="hidden lg:block">
++          <Sidebar />
++        </div>
++      )}
+ 
+       {/* Mobile Sidebar (Drawer) */}
+       {sidebarOpen && (
+@@ -25,17 +52,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
+             onClick={() => setSidebarOpen(false)} 
+           />
+           
+-          {/* Drawer */}
+-          <div className="absolute left-0 top-0 h-full w-72 bg-[#4A3F3A] shadow-2xl">
+-            <div className="flex justify-end p-4">
+-              <button 
++          {/* Drawer — colonne flexible : l'en-tête et le pied restent fixes,
++              seul le menu défile. C'est ce qui manquait : avant, le tiroir
++              coupait le contenu et « Employés » → « Déconnexion » étaient
++              inatteignables sur téléphone. */}
++          <div className="absolute left-0 top-0 h-full w-72 max-w-[85vw] bg-[#4A3F3A] shadow-2xl flex flex-col overflow-hidden">
++            <div className="flex justify-end p-2 shrink-0">
++              <button
+                 onClick={() => setSidebarOpen(false)}
+-                className="text-[#F7E7CE] p-2"
++                className="text-[#F7E7CE] p-2.5 rounded-xl hover:bg-white/10 active:scale-95 transition-transform"
++                aria-label="Fermer le menu"
+               >
+                 <X size={24} />
+               </button>
+             </div>
+-            <Sidebar isMobile onClose={() => setSidebarOpen(false)} />
++            {/* flex-1 + min-h-0 : donne au menu la hauteur restante, et le
++                laisse défiler à l'intérieur du tiroir */}
++            <div className="flex-1 min-h-0">
++              <Sidebar isMobile onClose={() => setSidebarOpen(false)} />
++            </div>
+           </div>
+         </div>
+       )}
+diff --git a/src/components/PasswordInput.tsx b/src/components/PasswordInput.tsx
+new file mode 100644
+index 0000000..97e74eb
+--- /dev/null
++++ b/src/components/PasswordInput.tsx
+@@ -0,0 +1,123 @@
++"use client";
++
++import { useRef, useState } from "react";
++import { Eye, EyeOff } from "lucide-react";
++
++/**
++ * ============================================================================
++ *  CHAMP MOT DE PASSE AVEC BOUTON « AFFICHER / MASQUER »
++ * ============================================================================
++ *  Pourquoi ? Sur un clavier de téléphone, les fautes de frappe sont
++ *  fréquentes et les « •••••• » ne montrent pas où est l'erreur : on ne
++ *  découvre le problème qu'après l'échec de la connexion.
++ *
++ *  Le mot de passe reste masqué par défaut — c'est l'utilisateur qui choisit
++ *  de l'afficher.
++ *
++ *  Détails techniques importants :
++ *   - le bouton est en type="button" : il ne déclenche JAMAIS l'envoi du
++ *     formulaire (bug classique sur mobile)
++ *   - après le basculement, on redonne le focus au champ et on replace le
++ *     curseur à la fin : sur Android, changer le type fait perdre le focus
++ *     et ferme le clavier, ce qui rend la saisie pénible
++ *   - la zone tactile fait au moins 44 px (recommandation Apple/Google)
++ * ============================================================================
++ */
++
++interface PasswordInputProps {
++  value: string;
++  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
++  /** classes du champ (identiques à ce qui est utilisé sur la page) */
++  className?: string;
++  placeholder?: string;
++  required?: boolean;
++  autoComplete?: string;
++  name?: string;
++  id?: string;
++  autoFocus?: boolean;
++  /** désactive le bouton (pendant l'envoi du formulaire) */
++  disabled?: boolean;
++  /** couleur de l'icône, si le fond n'est pas clair */
++  iconeClassName?: string;
++  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
++}
++
++export function PasswordInput({
++  value,
++  onChange,
++  className = "",
++  placeholder = "••••••••",
++  required,
++  autoComplete = "current-password",
++  name,
++  id,
++  autoFocus,
++  disabled,
++  iconeClassName = "text-[#B87333]/70 hover:text-[#B87333]",
++  onKeyDown,
++}: PasswordInputProps) {
++  const [visible, setVisible] = useState(false);
++  const ref = useRef<HTMLInputElement>(null);
++
++  const basculer = () => {
++    const champ = ref.current;
++    const position = champ?.selectionStart ?? null;
++
++    setVisible((v) => !v);
++
++    // On redonne le focus juste après le rendu (Android perd le focus
++    // lorsqu'on change le type d'un champ).
++    if (champ) {
++      requestAnimationFrame(() => {
++        const el = ref.current;
++        if (!el) return;
++        el.focus();
++        if (position !== null) {
++          try {
++            el.setSelectionRange(position, position);
++          } catch {
++            /* certains navigateurs refusent sur type=password : sans gravité */
++          }
++        }
++      });
++    }
++  };
++
++  return (
++    <div className="relative">
++      <input
++        ref={ref}
++        id={id}
++        name={name}
++        // pr-12 : laisse la place à l'icône pour que le texte ne passe pas dessous
++        className={`${className} pr-12`}
++        type={visible ? "text" : "password"}
++        value={value}
++        onChange={onChange}
++        onKeyDown={onKeyDown}
++        placeholder={placeholder}
++        required={required}
++        autoComplete={autoComplete}
++        autoFocus={autoFocus}
++        disabled={disabled}
++        // empêche le correcteur orthographique de s'activer sur le mot de passe
++        spellCheck={false}
++        autoCorrect="off"
++        autoCapitalize="off"
++      />
++
++      <button
++        type="button"
++        onClick={basculer}
++        disabled={disabled}
++        // zone tactile suffisante sur mobile
++        className={`password-toggle absolute right-1 top-1/2 -translate-y-1/2 rounded-lg transition-colors hover:bg-black/5 active:scale-95 disabled:opacity-40 flex items-center justify-center min-w-[44px] min-h-[44px] ${iconeClassName}`}
++        aria-label={visible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
++        title={visible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
++        tabIndex={-1}
++      >
++        {visible ? <EyeOff size={18} /> : <Eye size={18} />}
++      </button>
++    </div>
++  );
++}
+diff --git a/src/components/Sidebar.tsx b/src/components/Sidebar.tsx
+index 7da9885..339e22f 100644
+--- a/src/components/Sidebar.tsx
++++ b/src/components/Sidebar.tsx
+@@ -79,11 +79,21 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
+ 
+   return (
+     <Trans>
+-      <aside className={`${isMobile ? "w-full" : "w-64"} min-h-screen flex flex-col relative overflow-hidden`}>
++      <aside
++        className={`${
++          isMobile
++            ? // MOBILE : on remplit exactement le tiroir (h-full) — surtout pas
++              // min-h-screen, qui forçait 100vh À L'INTÉRIEUR du tiroir et
++              // poussait « Employés » jusqu'à « Déconnexion » hors de l'écran.
++              "w-full h-full"
++            : // BUREAU : comportement d'origine conservé
++              "w-64 min-h-screen"
++        } flex flex-col relative overflow-hidden`}
++      >
+         <div className="absolute inset-0 bg-gradient-to-br from-[#4A3F3A] via-[#5A4A42] to-[#6B5B55]" />
+         <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `repeating-linear-gradient(90deg, transparent, transparent 50px, rgba(247, 231, 206, 0.03) 50px, rgba(247, 231, 206, 0.03) 52px), repeating-linear-gradient(0deg, transparent, transparent 80px, rgba(247, 231, 206, 0.02) 80px, rgba(247, 231, 206, 0.02) 82px)` }} />
+ 
+-        <div className="relative z-10 p-6 border-b border-[#C9A9A6]/20">
++        <div className="relative z-10 p-6 border-b border-[#C9A9A6]/20 shrink-0">
+           <div className="flex items-center justify-between">
+             <h1 className="font-[family-name:var(--font-playfair)] text-2xl font-semibold text-[#F7E7CE] tracking-tight">SamaBoutique</h1>
+             {!isMobile && <LanguageSwitcher />}
+@@ -91,7 +101,30 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
+           <p className="text-sm text-[#C9A9A6]/80 mt-1 font-medium">{session?.user?.shopName || "Bienvenue"}</p>
+         </div>
+ 
+-        <nav className="relative z-10 flex-1 p-3 sm:p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y scroll-smooth scrollbar-thin" style={{ maxHeight: isMobile ? 'calc(100vh - 65px)' : 'calc(100vh - 115px)', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y', scrollbarWidth: 'thin', scrollBehavior: 'smooth' }}>
++        <nav
++          className="relative z-10 flex-1 min-h-0 p-3 sm:p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y scroll-smooth scrollbar-thin"
++          style={
++            isMobile
++              ? {
++                  // MOBILE : aucune hauteur fixe. Le parent (flex + min-h-0)
++                  // détermine la hauteur disponible, et le menu défile dedans.
++                  WebkitOverflowScrolling: "touch",
++                  overscrollBehavior: "contain",
++                  touchAction: "pan-y",
++                  scrollbarWidth: "thin",
++                  scrollBehavior: "smooth",
++                }
++              : {
++                  // BUREAU : comportement d'origine conservé
++                  maxHeight: "calc(100vh - 115px)",
++                  WebkitOverflowScrolling: "touch",
++                  overscrollBehavior: "contain",
++                  touchAction: "pan-y",
++                  scrollbarWidth: "thin",
++                  scrollBehavior: "smooth",
++                }
++          }
++        >
+           {menuItems.map((item) => {
+             const Icon = item.icon;
+             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+@@ -156,7 +189,7 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
+           )}
+         </nav>
+ 
+-        <div className="relative z-10 p-4 border-t border-[#C9A9A6]/20">
++        <div className="relative z-10 p-4 border-t border-[#C9A9A6]/20 shrink-0">
+           <button 
+             onClick={handleLogout} 
+             disabled={loggingOut}
+diff --git a/src/lib/i18n.tsx b/src/lib/i18n.tsx
+index f16d1df..1acff8a 100644
+--- a/src/lib/i18n.tsx
++++ b/src/lib/i18n.tsx
+@@ -21,7 +21,15 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
+   const [lang, setLangState] = useState<Lang>("fr");
+ 
+   useEffect(() => {
+-    const saved = typeof window !== "undefined" ? (localStorage.getItem("lang") as Lang) : null;
++    // ⚠️ localStorage peut LEVER UNE EXCEPTION sur mobile (Chrome en navigation
++    // privée, stockage saturé, contexte Android restreint). Sans try/catch, cela
++    // faisait planter TOUTE la page (« This page couldn't load »).
++    let saved: string | null = null;
++    try {
++      saved = typeof window !== "undefined" ? window.localStorage.getItem("lang") : null;
++    } catch {
++      saved = null; // on reste en français par défaut
++    }
+     if (saved === "fr" || saved === "en") {
+       setLangState(saved);
+     }
+@@ -29,14 +37,22 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
+ 
+   const setLang = (l: Lang) => {
+     setLangState(l);
+-    if (typeof window !== "undefined") {
+-      localStorage.setItem("lang", l);
+-      document.documentElement.lang = l;
++    try {
++      if (typeof window !== "undefined") {
++        window.localStorage.setItem("lang", l);
++        document.documentElement.lang = l;
++      }
++    } catch {
++      // stockage indisponible : le changement de langue reste actif pour la
++      // session en cours, simplement il ne sera pas mémorisé.
+     }
+   };
+ 
+   const t = (key: string) => {
+-    return translations[lang][key] || key;
++    // double sécurité : si une langue ou une clé venait à manquer,
++    // on affiche la clé au lieu de faire planter la page
++    const dictionnaire = translations[lang] || translations.fr;
++    return dictionnaire?.[key] || key;
+   };
+ 
+   return (
