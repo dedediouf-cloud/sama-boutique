@@ -79,11 +79,21 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
 
   return (
     <Trans>
-      <aside className={`${isMobile ? "w-full" : "w-64"} min-h-screen flex flex-col relative overflow-hidden`}>
+      <aside
+        className={`${
+          isMobile
+            ? // MOBILE : on remplit exactement le tiroir (h-full) — surtout pas
+              // min-h-screen, qui forçait 100vh À L'INTÉRIEUR du tiroir et
+              // poussait « Employés » jusqu'à « Déconnexion » hors de l'écran.
+              "w-full h-full"
+            : // BUREAU : comportement d'origine conservé
+              "w-64 min-h-screen"
+        } flex flex-col relative overflow-hidden`}
+      >
         <div className="absolute inset-0 bg-gradient-to-br from-[#4A3F3A] via-[#5A4A42] to-[#6B5B55]" />
         <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `repeating-linear-gradient(90deg, transparent, transparent 50px, rgba(247, 231, 206, 0.03) 50px, rgba(247, 231, 206, 0.03) 52px), repeating-linear-gradient(0deg, transparent, transparent 80px, rgba(247, 231, 206, 0.02) 80px, rgba(247, 231, 206, 0.02) 82px)` }} />
 
-        <div className="relative z-10 p-6 border-b border-[#C9A9A6]/20">
+        <div className="relative z-10 p-6 border-b border-[#C9A9A6]/20 shrink-0">
           <div className="flex items-center justify-between">
             <h1 className="font-[family-name:var(--font-playfair)] text-2xl font-semibold text-[#F7E7CE] tracking-tight">SamaBoutique</h1>
             {!isMobile && <LanguageSwitcher />}
@@ -91,7 +101,30 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
           <p className="text-sm text-[#C9A9A6]/80 mt-1 font-medium">{session?.user?.shopName || "Bienvenue"}</p>
         </div>
 
-        <nav className="relative z-10 flex-1 p-3 sm:p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y scroll-smooth scrollbar-thin" style={{ maxHeight: isMobile ? 'calc(100vh - 65px)' : 'calc(100vh - 115px)', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y', scrollbarWidth: 'thin', scrollBehavior: 'smooth' }}>
+        <nav
+          className="relative z-10 flex-1 min-h-0 p-3 sm:p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y scroll-smooth scrollbar-thin"
+          style={
+            isMobile
+              ? {
+                  // MOBILE : aucune hauteur fixe. Le parent (flex + min-h-0)
+                  // détermine la hauteur disponible, et le menu défile dedans.
+                  WebkitOverflowScrolling: "touch",
+                  overscrollBehavior: "contain",
+                  touchAction: "pan-y",
+                  scrollbarWidth: "thin",
+                  scrollBehavior: "smooth",
+                }
+              : {
+                  // BUREAU : comportement d'origine conservé
+                  maxHeight: "calc(100vh - 115px)",
+                  WebkitOverflowScrolling: "touch",
+                  overscrollBehavior: "contain",
+                  touchAction: "pan-y",
+                  scrollbarWidth: "thin",
+                  scrollBehavior: "smooth",
+                }
+          }
+        >
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -156,7 +189,7 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
           )}
         </nav>
 
-        <div className="relative z-10 p-4 border-t border-[#C9A9A6]/20">
+        <div className="relative z-10 p-4 border-t border-[#C9A9A6]/20 shrink-0">
           <button 
             onClick={handleLogout} 
             disabled={loggingOut}

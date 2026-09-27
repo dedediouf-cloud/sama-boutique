@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useTranslation } from "@/lib/i18n";
 import { Trans } from "@/components/Trans";
+import { PasswordInput } from "@/components/PasswordInput";
 import { Repeat, Gift } from "lucide-react";
 
 function RegisterForm() {
@@ -111,13 +112,13 @@ function RegisterForm() {
 
             <div>
               <label className="block text-sm font-medium text-[#5C4033] mb-1.5">{t("Mot de passe")}</label>
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] placeholder-[#B87333]/50"
-                placeholder="••••••••"
-                required
+              <PasswordInput
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] placeholder-[#B87333]/50"
+                  placeholder="••••••••"
+                  autoComplete="new-password"
+                  required
               />
             </div>
 

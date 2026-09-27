@@ -3,18 +3,45 @@
 import { Sidebar } from "./Sidebar";
 import { TrialBanner } from "./TrialBanner";
 import { Trans } from "./Trans";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, X } from "lucide-react";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Est-on sur un écran large ? Sert à NE PAS monter la barre latérale de
+  // bureau sur mobile (avant, elle était masquée en CSS mais restait montée :
+  // double DOM, double abonnement à la session → travail inutile sur mobile).
+  const [estBureau, setEstBureau] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const maj = () => setEstBureau(mq.matches);
+    maj();
+    mq.addEventListener("change", maj);
+    return () => mq.removeEventListener("change", maj);
+  }, []);
+
+  // Empêche la page derrière le menu de défiler quand le tiroir est ouvert
+  // (sur mobile, le doigt faisait défiler l'arrière-plan au lieu du menu).
+  useEffect(() => {
+    if (!sidebarOpen || typeof document === "undefined") return;
+    const precedent = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = precedent;
+    };
+  }, [sidebarOpen]);
+
   return (
     <div className="flex min-h-screen bg-[#FFFBF5]">
-      {/* Desktop Sidebar - hidden on mobile */}
-      <div className="hidden lg:block">
-        <Sidebar />
-      </div>
+      {/* Barre latérale de bureau — montée uniquement sur écran large */}
+      {estBureau && (
+        <div className="hidden lg:block">
+          <Sidebar />
+        </div>
+      )}
 
       {/* Mobile Sidebar (Drawer) */}
       {sidebarOpen && (
@@ -25,17 +52,25 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             onClick={() => setSidebarOpen(false)} 
           />
           
-          {/* Drawer */}
-          <div className="absolute left-0 top-0 h-full w-72 bg-[#4A3F3A] shadow-2xl">
-            <div className="flex justify-end p-4">
-              <button 
+          {/* Drawer — colonne flexible : l'en-tête et le pied restent fixes,
+              seul le menu défile. C'est ce qui manquait : avant, le tiroir
+              coupait le contenu et « Employés » → « Déconnexion » étaient
+              inatteignables sur téléphone. */}
+          <div className="absolute left-0 top-0 h-full w-72 max-w-[85vw] bg-[#4A3F3A] shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex justify-end p-2 shrink-0">
+              <button
                 onClick={() => setSidebarOpen(false)}
-                className="text-[#F7E7CE] p-2"
+                className="text-[#F7E7CE] p-2.5 rounded-xl hover:bg-white/10 active:scale-95 transition-transform"
+                aria-label="Fermer le menu"
               >
                 <X size={24} />
               </button>
             </div>
-            <Sidebar isMobile onClose={() => setSidebarOpen(false)} />
+            {/* flex-1 + min-h-0 : donne au menu la hauteur restante, et le
+                laisse défiler à l'intérieur du tiroir */}
+            <div className="flex-1 min-h-0">
+              <Sidebar isMobile onClose={() => setSidebarOpen(false)} />
+            </div>
           </div>
         </div>
       )}

@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslation } from "@/lib/i18n";
 import { Trans } from "@/components/Trans";
+import { PasswordInput } from "@/components/PasswordInput";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -92,13 +93,13 @@ export default function LoginPage() {
 
               <div>
                 <label className="block text-sm font-medium text-[#5C4033] mb-1.5">{t("Mot de passe")}</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] placeholder-[#B87333]/50"
-                  placeholder="••••••••"
-                  required
+                <PasswordInput
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl input-warm text-[#3D2B1F] placeholder-[#B87333]/50"
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    required
                 />
               </div>
 

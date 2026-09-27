@@ -21,7 +21,15 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Lang>("fr");
 
   useEffect(() => {
-    const saved = typeof window !== "undefined" ? (localStorage.getItem("lang") as Lang) : null;
+    // ⚠️ localStorage peut LEVER UNE EXCEPTION sur mobile (Chrome en navigation
+    // privée, stockage saturé, contexte Android restreint). Sans try/catch, cela
+    // faisait planter TOUTE la page (« This page couldn't load »).
+    let saved: string | null = null;
+    try {
+      saved = typeof window !== "undefined" ? window.localStorage.getItem("lang") : null;
+    } catch {
+      saved = null; // on reste en français par défaut
+    }
     if (saved === "fr" || saved === "en") {
       setLangState(saved);
     }
@@ -29,14 +37,22 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
   const setLang = (l: Lang) => {
     setLangState(l);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("lang", l);
-      document.documentElement.lang = l;
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("lang", l);
+        document.documentElement.lang = l;
+      }
+    } catch {
+      // stockage indisponible : le changement de langue reste actif pour la
+      // session en cours, simplement il ne sera pas mémorisé.
     }
   };
 
   const t = (key: string) => {
-    return translations[lang][key] || key;
+    // double sécurité : si une langue ou une clé venait à manquer,
+    // on affiche la clé au lieu de faire planter la page
+    const dictionnaire = translations[lang] || translations.fr;
+    return dictionnaire?.[key] || key;
   };
 
   return (
