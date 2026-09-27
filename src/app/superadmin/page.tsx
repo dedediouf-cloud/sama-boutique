@@ -35,10 +35,12 @@ import {
   Search,
   Eye,
   EyeOff,
+  Database,
   ShieldCheck,
   ShieldAlert,
 } from "lucide-react";
 import { getAnnualAmount } from "@/lib/subscription";
+import { BackupManager } from "@/components/BackupManager";
 
 interface CompteSuperAdmin {
   id: string;
@@ -157,6 +159,7 @@ export default function SuperAdminDashboard() {
   const [showPasswords, setShowPasswords] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState("");
+  const [sauvegardeBoutique, setSauvegardeBoutique] = useState<{ id: string; nom: string } | null>(null);
 
   const filteredBoutiques = boutiques.filter((b) => {
     const term = searchTerm.toLowerCase();
@@ -1035,6 +1038,14 @@ export default function SuperAdminDashboard() {
                               {boutique.isBlocked ? "Débloquer" : "Bloquer"}
                             </button>
                             <button
+                              onClick={() => setSauvegardeBoutique({ id: boutique.id, nom: boutique.shopName })}
+                              className="px-3 py-1.5 rounded-lg bg-[#F5F0FF] text-[#5B4B8A] text-xs font-medium border border-[#B8A9E0]/30 inline-flex items-center gap-1"
+                              title="Sauvegarder et restaurer les données de cette boutique"
+                            >
+                              <Database size={12} /> Sauvegardes
+                            </button>
+
+                            <button
                               onClick={() => extendTrial(boutique.id, boutique.shopName)}
                               className="px-3 py-1.5 rounded-lg bg-[#FFF8E7] text-[#B87333] text-xs font-medium border border-[#D4AF37]/20 inline-flex items-center gap-1"
                               title="Ajouter des jours d'essai gratuit"
@@ -1267,6 +1278,14 @@ export default function SuperAdminDashboard() {
                         {boutique.isBlocked ? <Unlock size={12} /> : <Lock size={12} />}
                         {boutique.isBlocked ? "Débloquer" : "Bloquer"}
                       </button>
+                      <button
+                        onClick={() => setSauvegardeBoutique({ id: boutique.id, nom: boutique.shopName })}
+                        className="px-3 py-1.5 rounded-lg bg-[#F5F0FF] text-[#5B4B8A] text-xs font-medium border border-[#B8A9E0]/30 inline-flex items-center gap-1"
+                        title="Sauvegarder et restaurer les données de cette boutique"
+                      >
+                        <Database size={12} /> Sauvegardes
+                      </button>
+
                       <button
                         onClick={() => extendTrial(boutique.id, boutique.shopName)}
                         className="px-3 py-1.5 rounded-lg bg-[#FFF8E7] text-[#B87333] text-xs font-medium border border-[#D4AF37]/20 inline-flex items-center gap-1"
@@ -1665,6 +1684,14 @@ export default function SuperAdminDashboard() {
               </form>
             </div>
           </div>
+        )}
+        {/* Fenêtre de gestion des sauvegardes */}
+        {sauvegardeBoutique && (
+          <BackupManager
+            boutiqueId={sauvegardeBoutique.id}
+            boutiqueNom={sauvegardeBoutique.nom}
+            onClose={() => setSauvegardeBoutique(null)}
+          />
         )}
       </div>
     </SuperAdminProtectedRoute>

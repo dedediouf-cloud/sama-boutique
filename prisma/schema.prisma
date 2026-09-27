@@ -46,6 +46,7 @@ model User {
   referredBy            User?   @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referralsMade         User[]  @relation("UserReferrals")
   trialReminders        TrialReminder[]
+  backups               BoutiqueBackup[]
   settings              BoutiqueSettings? @relation("UserToBoutiqueSettings")
   cashSessions          CashSession[]
 }
@@ -239,6 +240,9 @@ model SaleItem {
 
   productId String
   product   Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
 }
 
 model Supplier {
@@ -381,6 +385,8 @@ model GlobalSettings {
   referralRewardMonths       Int      @default(1)
   defaultMonthlyAmount       Float    @default(10000)
   trialDays                  Int      @default(15)
+  backupEnabled              Boolean  @default(true)
+  backupRetention            Int      @default(30)
   updatedAt                  DateTime @updatedAt
 }
 
@@ -453,4 +459,26 @@ model TrialReminder {
 
   @@unique([userId, kind])
   @@index([userId])
+}
+
+/// Instantané (sauvegarde) des données d'UNE boutique.
+/// Le fichier compressé est stocké hors de la base (Vercel Blob) ;
+/// cette table ne contient que les métadonnées.
+model BoutiqueBackup {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  kind      String   @default("auto") // auto | manual
+  sizeBytes Int      @default(0)
+  url       String
+  pathname  String
+  counts    String?  // résumé JSON : {"products":400,"sales":2000,...}
+  permanent Boolean  @default(false) // true = jamais supprimé automatiquement
+  version   Int      @default(1)
+  createdBy String?  // email du super admin (sauvegarde manuelle)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
