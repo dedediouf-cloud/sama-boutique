@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "vercel-build": "npx prisma generate --schema=prisma/schema.prod.prisma && npx prisma db push --schema=prisma/schema.prod.prisma && next build",
+    "demo:creer": "node scripts/creer-boutique-demo.js",
     "audit:securite": "node scripts/audit-securite.js",
     "audit:local": "prisma generate --schema=prisma/schema.prisma && node scripts/audit-securite.js \"file:./dev.db\"",
     "audit:prod": "prisma generate --schema=prisma/schema.prod.prisma && node scripts/audit-securite.js",
