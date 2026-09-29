@@ -1,0 +1,13 @@
+diff --git a/src/app/page.tsx b/src/app/page.tsx
+index be974d6..46d9f02 100644
+--- a/src/app/page.tsx
++++ b/src/app/page.tsx
+@@ -228,7 +228,7 @@ export default async function HomePage() {
+           <div className="max-w-3xl">
+             <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#D4AF37]/12 border border-[#D4AF37]/25 text-xs sm:text-sm font-medium text-[#8A6D2F] mb-6">
+               <CheckCircle size={15} />
+-              {essaiJours} jours d&apos;essai gratuit · sans carte bancaire
++              {`${essaiJours} jours d'essai gratuit · sans carte bancaire`}
+             </div>
+ 
+             <h1 className="font-[family-name:var(--font-playfair)] text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.1] mb-6">
