@@ -2,6 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "./prisma";
 import bcrypt from "bcryptjs";
+import { verifierLimite, reinitialiserLimite } from "./rate-limit";
 
 // Note: We intentionally avoid relying on Prisma generated types for logoUrl
 // because Vercel build cache + Turbopack + prisma generate timing often
@@ -19,6 +20,20 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
+        // === PROTECTION CONTRE LA FORCE BRUTE ===
+        // Sans cette limite, on pouvait tester des milliers de mots de passe
+        // en quelques minutes. 5 essais par email toutes les 15 minutes.
+        const cle = `login:${credentials.email.toLowerCase().trim()}`;
+        const limite = verifierLimite(cle, 5, 15 * 60 * 1000, 15 * 60 * 1000);
+        if (!limite.autorise) {
+          console.warn(`[AUTH] Trop de tentatives pour ${cle} — blocage ${limite.retryAfterSecondes}s`);
+          throw new Error(
+            `Trop de tentatives de connexion. Réessayez dans ${Math.ceil(
+              (limite.retryAfterSecondes || 900) / 60
+            )} minute(s).`
+          );
+        }
+
         // 1. Chercher d'abord dans les super administrateurs
         const superAdmin = await prisma.superAdmin.findUnique({
           where: { email: credentials.email },
@@ -28,6 +43,7 @@ export const authOptions: NextAuthOptions = {
           const isValid = await bcrypt.compare(credentials.password, superAdmin.password);
           if (!isValid) return null;
 
+          reinitialiserLimite(cle);
           return {
             id: superAdmin.id,
             email: superAdmin.email,
@@ -57,6 +73,7 @@ export const authOptions: NextAuthOptions = {
           if (!isValid) return null;
           if (user.isBlocked) return null;
 
+          reinitialiserLimite(cle);
           return {
             id: user.id,
             email: user.email,
@@ -88,6 +105,7 @@ export const authOptions: NextAuthOptions = {
 
           if (owner?.isBlocked) return null;
 
+          reinitialiserLimite(cle);
           return {
             id: employee.id,
             email: employee.email,

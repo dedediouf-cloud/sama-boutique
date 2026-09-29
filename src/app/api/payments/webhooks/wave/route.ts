@@ -1,104 +1,167 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
+import { prisma } from "@/lib/prisma";
+import { getPaymentProvider } from "@/lib/payments";
+import { getMerchantCredentials } from "@/lib/payments/credentials";
 
 /**
- * Webhook Wave Business
- * 
- * Wave envoie un POST avec:
- * - body: { id, status, amount, client_reference, ... }
- * - Header: X-Wave-Signature (HMAC)
- * 
- * Documentation: https://business.wave.com/developers
+ * ============================================================================
+ *  WEBHOOK WAVE — SÉCURISÉ
+ * ============================================================================
+ *  Même principe que pour Orange Money : le contenu du webhook n'est qu'un
+ *  INDICE. Seule la réponse de l'API Wave (interrogée avec les identifiants
+ *  marchands de la boutique) fait autorité.
+ *
+ *  AVANT : la signature X-Wave-Signature était reçue… puis ignorée
+ *          (« vérification à implémenter plus tard »). N'importe qui pouvait
+ *          donc marquer une vente comme payée.
+ *
+ *  MAINTENANT :
+ *    1. Signature HMAC vérifiée si WAVE_WEBHOOK_SECRET est configuré
+ *    2. Statut re-confirmé auprès de Wave via checkStatus()
+ *    3. Sans confirmation → aucune modification
+ * ============================================================================
  */
+
+export const maxDuration = 30;
+
+function signatureValide(corpsBrut: string, enTete: string | null) {
+  const secret = process.env.WAVE_WEBHOOK_SECRET;
+  if (!secret) return null; // pas de secret configuré
+  if (!enTete) return false;
+
+  const attendu = crypto.createHmac("sha256", secret).update(corpsBrut).digest("hex");
+  const recu = enTete.replace(/^sha256=/, "").trim();
+
+  try {
+    return crypto.timingSafeEqual(Buffer.from(attendu, "hex"), Buffer.from(recu, "hex"));
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: Request) {
   try {
-    const signature = request.headers.get("x-wave-signature") || 
-                      request.headers.get("X-Wave-Signature");
+    /* ── 1. Signature (si configurée) ───────────────────────────────────── */
+    const corpsBrut = await request.text();
+    const enTete =
+      request.headers.get("x-wave-signature") ||
+      request.headers.get("X-Wave-Signature");
 
-    const rawBody = await request.text();
-    const payload = JSON.parse(rawBody);
-
-    console.log("[Wave Webhook] Reçu:", {
-      id: payload.id,
-      status: payload.status,
-      reference: payload.client_reference,
-    });
-
-    // Si une signature est présente, on peut vérifier (recommandé en prod)
-    // Pour l'instant on log juste
-    if (signature) {
-      // Exemple de vérification HMAC (à activer plus tard)
-      // const secret = process.env.WAVE_WEBHOOK_SECRET;
-      // const computed = crypto.createHmac("sha256", secret!).update(rawBody).digest("hex");
-      console.log("[Wave Webhook] Signature reçue (vérification à implémenter en prod)");
+    const verif = signatureValide(corpsBrut, enTete);
+    if (verif === false) {
+      console.warn("[Wave Webhook] ⛔ Signature invalide — requête ignorée");
+      return NextResponse.json({ error: "Signature invalide" }, { status: 401 });
     }
 
-    const transactionId = payload.id || payload.checkout_session_id;
-    const status = (payload.status || "").toLowerCase();
-    const reference = payload.client_reference || payload.reference;
-
-    if (!transactionId) {
+    let body: any = {};
+    try {
+      body = JSON.parse(corpsBrut);
+    } catch {
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
-    // Mettre à jour la transaction et la vente
+    /* Wave utilise plusieurs noms de champs selon la version de son API */
+    const reference =
+      body.id ||
+      body.transaction_id ||
+      body.client_reference ||
+      body.reference ||
+      body.checkout_id;
+
+    console.log("[Wave Webhook] Reçu :", {
+      reference,
+      type: body.type,
+      status_annonce: body.payment_status || body.status,
+      signature_verifiee: verif === true ? "oui" : "non configurée",
+    });
+
+    if (!reference) {
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+
+    /* ── 2. Retrouver la transaction ────────────────────────────────────── */
     const tx = await prisma.paymentTransaction.findFirst({
-      where: { reference: transactionId },
+      where: { OR: [{ reference }, { id: reference }] },
       include: { sale: true },
     });
 
-    if (!tx) {
-      // Essayons via paymentRef de la vente
-      const saleByRef = await prisma.sale.findFirst({
-        where: { paymentRef: transactionId },
-      });
-      
-      if (saleByRef) {
-        const newStatus = status === "paid" || status === "completed" ? "paid" : 
-                         status.includes("fail") ? "failed" : "pending";
+    let venteConcernee = tx?.sale ?? null;
+    const transactionId = tx?.id ?? null;
 
-        await prisma.sale.update({
-          where: { id: saleByRef.id },
-          data: { paymentStatus: newStatus },
-        });
+    if (!venteConcernee) {
+      const sale = await prisma.sale.findFirst({ where: { paymentRef: reference } });
+      if (sale) venteConcernee = sale;
+    }
 
-        console.log(`[Wave Webhook] Vente ${saleByRef.id} mise à jour → ${newStatus}`);
+    if (!venteConcernee) {
+      console.warn("[Wave Webhook] Aucune transaction pour", reference);
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+
+    /* ── 3. VÉRIFICATION AUPRÈS DE WAVE ─────────────────────────────────── */
+    let statutConfirme: string | null = null;
+    try {
+      const credentials = await getMerchantCredentials(venteConcernee.userId);
+      const provider = getPaymentProvider("wave" as any, credentials || undefined);
+
+      // ⚠️  Sans identifiants, le fournisseur ne peut RIEN confirmer :
+      //     on refuse de mettre à jour plutôt que de faire confiance au webhook.
+      if (provider && typeof provider.isConfigured === "function" && !provider.isConfigured()) {
+        console.warn(
+          `[Webhook] ⛔ ${provider.name || "fournisseur"} non configuré pour cette boutique — aucune modification`
+        );
+        return NextResponse.json(
+          {
+            received: true,
+            verified: false,
+            message: "Fournisseur de paiement non configuré : aucune modification effectuée",
+          },
+          { status: 200 }
+        );
       }
-      return NextResponse.json({ received: true });
+
+      if (provider && typeof provider.checkStatus === "function") {
+        const resultat = await provider.checkStatus(reference);
+        statutConfirme = (resultat as any)?.status ?? null;
+      }
+    } catch (e: any) {
+      console.warn("[Wave Webhook] Vérification auprès de Wave impossible :", e?.message || e);
     }
 
-    let newStatus: "pending" | "paid" | "failed" | "cancelled" = "pending";
-
-    if (status === "paid" || status === "completed" || status === "success") {
-      newStatus = "paid";
-    } else if (status === "failed" || status === "error") {
-      newStatus = "failed";
-    } else if (status === "cancelled" || status === "canceled") {
-      newStatus = "cancelled";
+    /* ── 4. Sans confirmation → rien n'est modifié ──────────────────────── */
+    if (!statutConfirme) {
+      console.warn(
+        "[Wave Webhook] ⚠️  Statut NON confirmé par Wave — vente",
+        venteConcernee.id,
+        "laissée en",
+        venteConcernee.paymentStatus
+      );
+      return NextResponse.json(
+        { received: true, verified: false, message: "Statut non confirmé : aucune modification" },
+        { status: 200 }
+      );
     }
 
+    /* ── 5. Enregistrement ──────────────────────────────────────────────── */
     await prisma.$transaction(async (prismaTx) => {
-      await prismaTx.paymentTransaction.update({
-        where: { id: tx.id },
-        data: { 
-          status: newStatus,
-          updatedAt: new Date(),
-        },
-      });
-
+      if (transactionId) {
+        await prismaTx.paymentTransaction.update({
+          where: { id: transactionId },
+          data: { status: statutConfirme!, updatedAt: new Date() },
+        });
+      }
       await prismaTx.sale.update({
-        where: { id: tx.saleId },
-        data: { paymentStatus: newStatus },
+        where: { id: venteConcernee!.id },
+        data: { paymentStatus: statutConfirme! },
       });
     });
 
-    console.log(`[Wave Webhook] Transaction ${tx.id} mise à jour → ${newStatus}`);
+    console.log(`[Wave Webhook] ✅ Vente ${venteConcernee.id} → ${statutConfirme} (confirmé par Wave)`);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, verified: true, status: statutConfirme });
   } catch (error: any) {
-    console.error("[Wave Webhook] Erreur:", error);
-    // Toujours retourner 200 pour Wave (ils réessaient sinon)
+    console.error("[Wave Webhook] Erreur :", error);
     return NextResponse.json({ received: true }, { status: 200 });
   }
 }

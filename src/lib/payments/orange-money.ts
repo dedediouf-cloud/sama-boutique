@@ -44,13 +44,15 @@ export class OrangeMoneyProvider implements PaymentProviderInterface {
     const authToken = await this.getBearerToken();
 
     if (!merchantCode || !authToken) {
-      console.warn("[Orange Money] Aucun identifiant marchand → simulation");
-      const transactionId = `OM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // ⚠️  AVANT : renvoyait success:true → le client croyait avoir payé, la
+      //     vente était créée et le stock décrémenté, sans aucun encaissement.
+      console.warn("[Orange Money] Aucun identifiant marchand : paiement REFUSÉ");
       return {
-        success: true,
-        transactionId,
-        status: "pending",
-        message: `Paiement Orange Money initié (simulation - ajoutez votre Code Marchand + clé API). Validez sur votre téléphone ${request.phone}.`,
+        success: false,
+        transactionId: "",
+        status: "failed",
+        message:
+          "Le paiement Orange Money n'est pas encore configuré pour cette boutique. Choisissez un autre mode de paiement ou contactez le commerçant.",
       };
     }
 
@@ -119,16 +121,25 @@ export class OrangeMoneyProvider implements PaymentProviderInterface {
     }
   }
 
+  /** Le marchand a-t-il renseigné ses identifiants ? */
+  isConfigured(): boolean {
+    return Boolean(this.getMerchantCode() && this.credentials?.omApiKey);
+  }
+
   async checkStatus(transactionId: string): Promise<PaymentStatusResponse> {
     const authToken = await this.getBearerToken();
     const merchantCode = this.getMerchantCode();
 
     if (!authToken || !merchantCode) {
-      console.warn("[Orange Money] checkStatus → simulation");
+      // ⚠️  AVANT : renvoyait "paid" → n'importe quel webhook falsifié marquait
+      //     la vente comme payée. Un statut ne peut être "paid" QUE si Orange
+      //     Money l'a réellement confirmé.
+      console.warn("[Orange Money] checkStatus → identifiants absents : statut INCONNU");
       return {
-        success: true,
-        status: "paid",
-        message: "Paiement Orange Money confirmé (simulation).",
+        success: false,
+        status: "pending",
+        message:
+          "Identifiants Orange Money non configurés : impossible de confirmer le paiement. Renseignez vos identifiants marchands dans les Paramètres.",
       };
     }
 

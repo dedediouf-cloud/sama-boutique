@@ -1,10 +1,24 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { verifierLimite } from "@/lib/rate-limit";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ shopSlug: string }> }
 ) {
+  // Limite anti-spam : le catalogue est public, sans cette protection
+  // n'importe qui pouvait créer des centaines de fausses réservations.
+  const ip =
+    (request as any).headers?.get?.("x-forwarded-for")?.split(",")[0]?.trim() ||
+    (request as any).headers?.get?.("x-real-ip") ||
+    "inconnue";
+  if (!verifierLimite(`reservation:${ip}`, 10, 10 * 60 * 1000, 30 * 60 * 1000).autorise) {
+    return NextResponse.json(
+      { error: "Trop de réservations envoyées. Merci de réessayer plus tard." },
+      { status: 429 }
+    );
+  }
+
   const { shopSlug } = await params;
 
   try {

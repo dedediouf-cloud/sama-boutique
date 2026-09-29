@@ -1,0 +1,39 @@
+# ============================================================
+#  FICHIER D'ADRESSE DE TA BASE DE PRODUCTION
+# ============================================================
+#
+#  COMMENT FAIRE (2 minutes) :
+#
+#    1. Ouvre Vercel :  https://vercel.com/dashboard
+#    2. Clique sur ton projet  sama-boutique
+#    3. Onglet  Settings  (en haut)
+#    4. Menu gauche :  Environment Variables
+#    5. Trouve la ligne  DATABASE_URL
+#    6. ATTENTION : il peut y en avoir plusieurs (Production,
+#       Preview, Development). Prends celle de la colonne
+#       « Production ».
+#    7. Clique sur l'oeil / « Reveal » pour voir la valeur
+#    8. Copie toute la valeur (elle est longue)
+#
+#    9. REVIENS ICI et colle-la sur la PREMIERE LIGNE LIBRE
+#       en dessous de ce bloc d'explications.
+#
+#   10. Enregistre (Ctrl + S) et ferme ce fichier.
+#
+#  La ligne que tu colles doit commencer par  postgresql://
+#
+#  Les lignes qui commencent par # sont ignorees : tu peux
+#  laisser tout ce texte, ce n'est pas grave.
+#
+# ============================================================
+#
+#  EXEMPLE (ne copie pas celui-ci, c'est un exemple) :
+#  postgresql://neondb_owner:npg_XXXXXXXX@ep-sweet-truth-ab1234-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require
+#
+# ============================================================
+
+
+# ↓↓↓  COLLE TON URL ICI, SUR LA LIGNE JUSTE EN DESSOUS  ↓↓↓
+
+postgresql://neondb_owner:npg_jXmVbdK2A7Zq@ep-sweet-truth-ad4kkunu-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+

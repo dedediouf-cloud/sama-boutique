@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { addMonths } from "@/lib/subscription";
+import { verifierLimite } from "@/lib/rate-limit";
 
 function slugify(text: string) {
   return text
@@ -18,6 +19,19 @@ function generateReferralCode(base: string) {
 
 export async function POST(request: Request) {
   try {
+    // Limite anti-création en masse (pas de captcha, pas de vérification email) :
+    // sans elle, on pouvait créer des centaines de faux comptes.
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      request.headers.get("x-real-ip") ||
+      "inconnue";
+    if (!verifierLimite(`register:${ip}`, 3, 60 * 60 * 1000, 60 * 60 * 1000).autorise) {
+      return NextResponse.json(
+        { error: "Trop de créations de compte depuis cet appareil. Réessayez dans une heure." },
+        { status: 429 }
+      );
+    }
+
     const { name, email, password, shopName, phone, referralCode, billingInterval } = await request.json();
 
     if (!email || !password || !shopName) {

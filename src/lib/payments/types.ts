@@ -22,6 +22,13 @@ export interface PaymentStatusResponse {
 
 export interface PaymentProviderInterface {
   name: string;
+  /**
+   * Le marchand a-t-il renseigné ses identifiants ?
+   * ⚠️  Si false, AUCUN paiement réel n'est possible : le fournisseur ne doit
+   *     ni initier de paiement, ni confirmer un statut. Sans ce contrôle, un
+   *     webhook falsifié pouvait marquer une vente comme payée.
+   */
+  isConfigured(): boolean;
   initiatePayment(request: PaymentRequest): Promise<PaymentResponse>;
   checkStatus(transactionId: string): Promise<PaymentStatusResponse>;
 }

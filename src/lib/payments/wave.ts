@@ -25,13 +25,15 @@ export class WaveProvider implements PaymentProviderInterface {
     const apiKey = this.getApiKey();
 
     if (!apiKey) {
-      console.warn("[Wave] Aucun clé API fournie → mode simulation");
-      const transactionId = `WV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      // ⚠️  AVANT : success:true → le client croyait avoir payé sans que rien
+      //     ne soit encaissé.
+      console.warn("[Wave] Aucune clé API : paiement REFUSÉ");
       return {
-        success: true,
-        transactionId,
-        status: "pending",
-        message: `Paiement Wave initié (simulation - ajoutez vos clés Wave Business). Ouvrez Wave sur ${request.phone}.`,
+        success: false,
+        transactionId: "",
+        status: "failed",
+        message:
+          "Le paiement Wave n'est pas encore configuré pour cette boutique. Choisissez un autre mode de paiement ou contactez le commerçant.",
       };
     }
 
@@ -100,15 +102,23 @@ export class WaveProvider implements PaymentProviderInterface {
     }
   }
 
+  /** Le marchand a-t-il renseigné ses identifiants ? */
+  isConfigured(): boolean {
+    return Boolean(this.getApiKey());
+  }
+
   async checkStatus(transactionId: string): Promise<PaymentStatusResponse> {
     const apiKey = this.getApiKey();
 
     if (!apiKey) {
-      console.warn("[Wave] checkStatus → simulation");
+      // ⚠️  AVANT : renvoyait "paid" → tout webhook falsifié marquait la vente
+      //     comme payée. Un statut "paid" doit venir de Wave, jamais d'un défaut.
+      console.warn("[Wave] checkStatus → identifiants absents : statut INCONNU");
       return {
-        success: true,
-        status: "paid",
-        message: "Paiement Wave confirmé (simulation).",
+        success: false,
+        status: "pending",
+        message:
+          "Identifiants Wave non configurés : impossible de confirmer le paiement. Renseignez vos identifiants marchands dans les Paramètres.",
       };
     }
 

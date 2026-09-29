@@ -1,0 +1,912 @@
+diff --git a/next.config.js b/next.config.js
+index 6e82cff..8978948 100644
+--- a/next.config.js
++++ b/next.config.js
+@@ -8,4 +8,31 @@ const nextConfig = {
+   },
+ };
+ 
++// ============================================================================
++//  EN-TÊTES DE SÉCURITÉ HTTP
++// ============================================================================
++//  Sans eux, un site peut être placé dans une iframe invisible (clickjacking),
++//  le navigateur peut deviner le type des fichiers, et le site peut être
++//  chargé en HTTP non chiffré.
++// ============================================================================
++nextConfig.headers = async () => [
++  {
++    source: "/(.*)",
++    headers: [
++      // Empêche l'affichage du site dans une iframe (anti-clickjacking)
++      { key: "X-Frame-Options", value: "SAMEORIGIN" },
++      // Empêche le navigateur de « deviner » le type des fichiers
++      { key: "X-Content-Type-Options", value: "nosniff" },
++      // Force HTTPS pendant 2 ans
++      { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
++      // Ne transmet pas l'adresse complète aux sites externes
++      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
++      // Désactive les fonctions inutiles du navigateur
++      { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
++      // Autorise le site à s'afficher seulement depuis lui-même
++      { key: "X-DNS-Prefetch-Control", value: "on" },
++    ],
++  },
++];
++
+ module.exports = nextConfig;
+diff --git a/src/app/api/auth/check-status/route.ts b/src/app/api/auth/check-status/route.ts
+index 00407e5..346fbcb 100644
+--- a/src/app/api/auth/check-status/route.ts
++++ b/src/app/api/auth/check-status/route.ts
+@@ -1,6 +1,7 @@
+ import { NextRequest, NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import { computeAccess } from "@/lib/access";
++import { verifierLimite } from "@/lib/rate-limit";
+ 
+ export async function POST(req: NextRequest) {
+   try {
+@@ -10,6 +11,19 @@ export async function POST(req: NextRequest) {
+       return NextResponse.json({ error: "Email requis" }, { status: 400 });
+     }
+ 
++    // Limite : sans elle, un attaquant pouvait balayer des milliers d'adresses
++    // pour découvrir quels emails sont enregistrés.
++    const ip =
++      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
++      req.headers.get("x-real-ip") ||
++      "inconnue";
++    if (!verifierLimite(`check-status:${ip}`, 20, 10 * 60 * 1000, 10 * 60 * 1000).autorise) {
++      return NextResponse.json(
++        { blocked: false, message: "Trop de vérifications. Réessayez dans quelques minutes.", access: null },
++        { status: 429 }
++      );
++    }
++
+     const user = await prisma.user.findUnique({
+       where: { email: email.toLowerCase().trim() },
+     });
+diff --git a/src/app/api/catalog/[shopSlug]/reservation/route.ts b/src/app/api/catalog/[shopSlug]/reservation/route.ts
+index cd581ac..c9a1dc1 100644
+--- a/src/app/api/catalog/[shopSlug]/reservation/route.ts
++++ b/src/app/api/catalog/[shopSlug]/reservation/route.ts
+@@ -1,10 +1,24 @@
+ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
++import { verifierLimite } from "@/lib/rate-limit";
+ 
+ export async function POST(
+   request: Request,
+   { params }: { params: Promise<{ shopSlug: string }> }
+ ) {
++  // Limite anti-spam : le catalogue est public, sans cette protection
++  // n'importe qui pouvait créer des centaines de fausses réservations.
++  const ip =
++    (request as any).headers?.get?.("x-forwarded-for")?.split(",")[0]?.trim() ||
++    (request as any).headers?.get?.("x-real-ip") ||
++    "inconnue";
++  if (!verifierLimite(`reservation:${ip}`, 10, 10 * 60 * 1000, 30 * 60 * 1000).autorise) {
++    return NextResponse.json(
++      { error: "Trop de réservations envoyées. Merci de réessayer plus tard." },
++      { status: 429 }
++    );
++  }
++
+   const { shopSlug } = await params;
+ 
+   try {
+diff --git a/src/app/api/payments/webhooks/orange-money/route.ts b/src/app/api/payments/webhooks/orange-money/route.ts
+index 93aa07f..1244c51 100644
+--- a/src/app/api/payments/webhooks/orange-money/route.ts
++++ b/src/app/api/payments/webhooks/orange-money/route.ts
+@@ -1,94 +1,192 @@
+ import { NextResponse } from "next/server";
++import crypto from "crypto";
+ import { prisma } from "@/lib/prisma";
++import { getPaymentProvider } from "@/lib/payments";
++import { getMerchantCredentials } from "@/lib/payments/credentials";
+ 
+ /**
+- * Webhook Orange Money Web Payment
+- * 
+- * Orange Money envoie généralement :
+- * - notif_token
+- * - status (SUCCESS / FAILED / EXPIRED)
+- * - order_id
+- * - amount
+- * 
+- * Endpoint configuré dans le dashboard OM: /api/payments/webhooks/orange-money
++ * ============================================================================
++ *  WEBHOOK ORANGE MONEY — SÉCURISÉ
++ * ============================================================================
++ *  ⚠️  PRINCIPE ABSOLU : on ne fait JAMAIS confiance au contenu du webhook.
++ *
++ *  AVANT (faille critique) :
++ *    Le webhook lisait { order_id, status } dans le corps de la requête et
++ *    mettait à jour la vente directement. N'importe qui pouvait donc envoyer :
++ *
++ *        POST /api/payments/webhooks/orange-money
++ *        { "order_id": "REF-CONNUE", "status": "SUCCESS" }
++ *
++ *    …et marquer une vente comme PAYÉE sans verser un franc. Le client reçoit
++ *    sa référence de paiement dans la réponse de /pay : l'exploit était trivial.
++ *
++ *  MAINTENANT :
++ *    1. Signature vérifiée si OM_WEBHOOK_SECRET est configuré (recommandé)
++ *    2. Le statut du webhook ne sert QUE d'indice
++ *    3. On INTERROGE Orange Money avec les identifiants marchands de la
++ *       boutique : seule SA réponse fait foi
++ *    4. Si la vérification échoue → on ne touche à RIEN
++ * ============================================================================
+  */
++
++export const maxDuration = 30;
++
++/** Vérifie la signature HMAC du corps brut (si un secret est configuré) */
++function signatureValide(corpsBrut: string, enTete: string | null) {
++  const secret = process.env.OM_WEBHOOK_SECRET;
++  if (!secret) return null; // pas de secret configuré → on ne peut pas vérifier
++  if (!enTete) return false;
++
++  const attendu = crypto.createHmac("sha256", secret).update(corpsBrut).digest("hex");
++  const recu = enTete.replace(/^sha256=/, "").trim();
++
++  try {
++    return crypto.timingSafeEqual(Buffer.from(attendu, "hex"), Buffer.from(recu, "hex"));
++  } catch {
++    return false;
++  }
++}
++
+ export async function POST(request: Request) {
+   try {
+-    const body = await request.json();
++    /* ── 1. Signature (si configurée) ───────────────────────────────────── */
++    const corpsBrut = await request.text();
++    const enTeteSignature =
++      request.headers.get("x-om-signature") ||
++      request.headers.get("x-orange-signature") ||
++      request.headers.get("x-signature");
+ 
+-    console.log("[OM Webhook] Reçu:", {
+-      order_id: body.order_id,
+-      status: body.status,
+-      pay_token: body.pay_token || body.token,
+-    });
++    const verif = signatureValide(corpsBrut, enTeteSignature);
++    if (verif === false) {
++      console.warn("[OM Webhook] ⛔ Signature invalide — requête ignorée");
++      return NextResponse.json({ error: "Signature invalide" }, { status: 401 });
++    }
++
++    let body: any = {};
++    try {
++      body = JSON.parse(corpsBrut);
++    } catch {
++      return NextResponse.json({ received: true }, { status: 200 });
++    }
+ 
+     const payToken = body.pay_token || body.token || body.transaction_id;
+     const orderId = body.order_id || body.reference;
+-    const status = (body.status || "").toUpperCase();
+ 
+-    let newStatus: "pending" | "paid" | "failed" | "cancelled" = "pending";
++    console.log("[OM Webhook] Reçu :", {
++      order_id: orderId,
++      status_annonce: body.status,
++      signature_verifiee: verif === true ? "oui" : "non configurée",
++    });
+ 
+-    if (["SUCCESS", "COMPLETED", "PAID", "CONFIRMED"].includes(status)) {
+-      newStatus = "paid";
+-    } else if (["FAILED", "ERROR", "REJECTED"].includes(status)) {
+-      newStatus = "failed";
+-    } else if (["EXPIRED", "CANCELLED"].includes(status)) {
+-      newStatus = "cancelled";
++    if (!payToken && !orderId) {
++      return NextResponse.json({ received: true }, { status: 200 });
+     }
+ 
+-    // Trouver la transaction par pay_token ou order_id
+-    let tx = await prisma.paymentTransaction.findFirst({
++    /* ── 2. Retrouver la transaction ────────────────────────────────────── */
++    const tx = await prisma.paymentTransaction.findFirst({
+       where: {
+-        OR: [
+-          { reference: payToken },
+-          { reference: orderId },
+-        ],
++        OR: [{ reference: payToken }, { reference: orderId }],
+       },
+       include: { sale: true },
+     });
+ 
+-    // Fallback via paymentRef de la vente
+-    if (!tx && orderId) {
+-      const sale = await prisma.sale.findFirst({
+-        where: { paymentRef: orderId },
+-      });
++    /* Fallback : par la référence de la vente */
++    let venteConcernee = tx?.sale ?? null;
++    let transactionId = tx?.id ?? null;
++    let reference = tx?.reference ?? orderId;
+ 
++    if (!venteConcernee && orderId) {
++      const sale = await prisma.sale.findFirst({ where: { paymentRef: orderId } });
+       if (sale) {
+-        await prisma.sale.update({
+-          where: { id: sale.id },
+-          data: { paymentStatus: newStatus },
+-        });
+-
+-        console.log(`[OM Webhook] Vente ${sale.id} mise à jour → ${newStatus}`);
+-        return NextResponse.json({ success: true });
++        venteConcernee = sale;
++        reference = orderId;
+       }
+     }
+ 
+-    if (!tx) {
+-      console.warn("[OM Webhook] Aucune transaction trouvée pour", payToken || orderId);
++    if (!venteConcernee) {
++      console.warn("[OM Webhook] Aucune transaction pour", payToken || orderId);
++      // On répond 200 pour éviter les réessais inutiles d'Orange
+       return NextResponse.json({ received: true }, { status: 200 });
+     }
+ 
+-    await prisma.$transaction(async (prismaTx) => {
+-      await prismaTx.paymentTransaction.update({
+-        where: { id: tx!.id },
+-        data: { 
+-          status: newStatus,
+-          updatedAt: new Date(),
+-        },
+-      });
++    /* ── 3. VÉRIFICATION AUPRÈS D'ORANGE (le point essentiel) ───────────── */
++    const ownerId = venteConcernee.userId;
++    let statutConfirme: string | null = null;
++    let methodeVerification = "aucune";
++
++    try {
++      const credentials = await getMerchantCredentials(ownerId);
++      const provider = getPaymentProvider("orange_money" as any, credentials || undefined);
++
++      // ⚠️  Sans identifiants, le fournisseur ne peut RIEN confirmer :
++      //     on refuse de mettre à jour plutôt que de faire confiance au webhook.
++      if (provider && typeof provider.isConfigured === "function" && !provider.isConfigured()) {
++        console.warn(
++          `[Webhook] ⛔ ${provider.name || "fournisseur"} non configuré pour cette boutique — aucune modification`
++        );
++        return NextResponse.json(
++          {
++            received: true,
++            verified: false,
++            message: "Fournisseur de paiement non configuré : aucune modification effectuée",
++          },
++          { status: 200 }
++        );
++      }
++
++      if (provider && typeof provider.checkStatus === "function") {
++        const resultat = await provider.checkStatus(reference || transactionId || "");
++        statutConfirme = (resultat as any)?.status ?? null;
++        methodeVerification = "api_orange";
++      }
++    } catch (e: any) {
++      console.warn("[OM Webhook] Vérification auprès d'Orange impossible :", e?.message || e);
++    }
++
++    /* ── 4. Aucun statut confirmé → on ne modifie RIEN ──────────────────── */
++    if (!statutConfirme) {
++      console.warn(
++        "[OM Webhook] ⚠️  Statut NON confirmé par Orange Money — vente",
++        venteConcernee.id,
++        "laissée en",
++        venteConcernee.paymentStatus
++      );
++      return NextResponse.json(
++        { received: true, verified: false, message: "Statut non confirmé : aucune modification" },
++        { status: 200 }
++      );
++    }
+ 
++    /* ── 5. Enregistrement du statut CONFIRMÉ par le fournisseur ────────── */
++    const nouveauxStatuts: Record<string, string> = {
++      paid: "paid",
++      failed: "failed",
++      cancelled: "cancelled",
++      pending: "pending",
++    };
++    const nouveauStatut = nouveauxStatuts[statutConfirme] || statutConfirme;
++
++    await prisma.$transaction(async (prismaTx) => {
++      if (transactionId) {
++        await prismaTx.paymentTransaction.update({
++          where: { id: transactionId },
++          data: { status: nouveauStatut, updatedAt: new Date() },
++        });
++      }
+       await prismaTx.sale.update({
+-        where: { id: tx!.saleId },
+-        data: { paymentStatus: newStatus },
++        where: { id: venteConcernee!.id },
++        data: { paymentStatus: nouveauStatut },
+       });
+     });
+ 
+-    console.log(`[OM Webhook] Transaction ${tx.id} mise à jour → ${newStatus}`);
++    console.log(
++      `[OM Webhook] ✅ Vente ${venteConcernee.id} → ${nouveauStatut} (confirmé par ${methodeVerification})`
++    );
+ 
+-    return NextResponse.json({ success: true });
++    return NextResponse.json({ success: true, verified: true, status: nouveauStatut });
+   } catch (error: any) {
+-    console.error("[OM Webhook] Erreur:", error);
++    console.error("[OM Webhook] Erreur :", error);
++    // Toujours 200 : sinon Orange réessaie en boucle
+     return NextResponse.json({ received: true }, { status: 200 });
+   }
+ }
+diff --git a/src/app/api/payments/webhooks/wave/route.ts b/src/app/api/payments/webhooks/wave/route.ts
+index 3d2ca6c..609e9e9 100644
+--- a/src/app/api/payments/webhooks/wave/route.ts
++++ b/src/app/api/payments/webhooks/wave/route.ts
+@@ -1,104 +1,167 @@
+ import { NextResponse } from "next/server";
+-import { prisma } from "@/lib/prisma";
+ import crypto from "crypto";
++import { prisma } from "@/lib/prisma";
++import { getPaymentProvider } from "@/lib/payments";
++import { getMerchantCredentials } from "@/lib/payments/credentials";
+ 
+ /**
+- * Webhook Wave Business
+- * 
+- * Wave envoie un POST avec:
+- * - body: { id, status, amount, client_reference, ... }
+- * - Header: X-Wave-Signature (HMAC)
+- * 
+- * Documentation: https://business.wave.com/developers
++ * ============================================================================
++ *  WEBHOOK WAVE — SÉCURISÉ
++ * ============================================================================
++ *  Même principe que pour Orange Money : le contenu du webhook n'est qu'un
++ *  INDICE. Seule la réponse de l'API Wave (interrogée avec les identifiants
++ *  marchands de la boutique) fait autorité.
++ *
++ *  AVANT : la signature X-Wave-Signature était reçue… puis ignorée
++ *          (« vérification à implémenter plus tard »). N'importe qui pouvait
++ *          donc marquer une vente comme payée.
++ *
++ *  MAINTENANT :
++ *    1. Signature HMAC vérifiée si WAVE_WEBHOOK_SECRET est configuré
++ *    2. Statut re-confirmé auprès de Wave via checkStatus()
++ *    3. Sans confirmation → aucune modification
++ * ============================================================================
+  */
+-export async function POST(request: Request) {
+-  try {
+-    const signature = request.headers.get("x-wave-signature") || 
+-                      request.headers.get("X-Wave-Signature");
+ 
+-    const rawBody = await request.text();
+-    const payload = JSON.parse(rawBody);
++export const maxDuration = 30;
+ 
+-    console.log("[Wave Webhook] Reçu:", {
+-      id: payload.id,
+-      status: payload.status,
+-      reference: payload.client_reference,
+-    });
++function signatureValide(corpsBrut: string, enTete: string | null) {
++  const secret = process.env.WAVE_WEBHOOK_SECRET;
++  if (!secret) return null; // pas de secret configuré
++  if (!enTete) return false;
++
++  const attendu = crypto.createHmac("sha256", secret).update(corpsBrut).digest("hex");
++  const recu = enTete.replace(/^sha256=/, "").trim();
+ 
+-    // Si une signature est présente, on peut vérifier (recommandé en prod)
+-    // Pour l'instant on log juste
+-    if (signature) {
+-      // Exemple de vérification HMAC (à activer plus tard)
+-      // const secret = process.env.WAVE_WEBHOOK_SECRET;
+-      // const computed = crypto.createHmac("sha256", secret!).update(rawBody).digest("hex");
+-      console.log("[Wave Webhook] Signature reçue (vérification à implémenter en prod)");
++  try {
++    return crypto.timingSafeEqual(Buffer.from(attendu, "hex"), Buffer.from(recu, "hex"));
++  } catch {
++    return false;
++  }
++}
++
++export async function POST(request: Request) {
++  try {
++    /* ── 1. Signature (si configurée) ───────────────────────────────────── */
++    const corpsBrut = await request.text();
++    const enTete =
++      request.headers.get("x-wave-signature") ||
++      request.headers.get("X-Wave-Signature");
++
++    const verif = signatureValide(corpsBrut, enTete);
++    if (verif === false) {
++      console.warn("[Wave Webhook] ⛔ Signature invalide — requête ignorée");
++      return NextResponse.json({ error: "Signature invalide" }, { status: 401 });
++    }
++
++    let body: any = {};
++    try {
++      body = JSON.parse(corpsBrut);
++    } catch {
++      return NextResponse.json({ received: true }, { status: 200 });
+     }
+ 
+-    const transactionId = payload.id || payload.checkout_session_id;
+-    const status = (payload.status || "").toLowerCase();
+-    const reference = payload.client_reference || payload.reference;
++    /* Wave utilise plusieurs noms de champs selon la version de son API */
++    const reference =
++      body.id ||
++      body.transaction_id ||
++      body.client_reference ||
++      body.reference ||
++      body.checkout_id;
++
++    console.log("[Wave Webhook] Reçu :", {
++      reference,
++      type: body.type,
++      status_annonce: body.payment_status || body.status,
++      signature_verifiee: verif === true ? "oui" : "non configurée",
++    });
+ 
+-    if (!transactionId) {
++    if (!reference) {
+       return NextResponse.json({ received: true }, { status: 200 });
+     }
+ 
+-    // Mettre à jour la transaction et la vente
++    /* ── 2. Retrouver la transaction ────────────────────────────────────── */
+     const tx = await prisma.paymentTransaction.findFirst({
+-      where: { reference: transactionId },
++      where: { OR: [{ reference }, { id: reference }] },
+       include: { sale: true },
+     });
+ 
+-    if (!tx) {
+-      // Essayons via paymentRef de la vente
+-      const saleByRef = await prisma.sale.findFirst({
+-        where: { paymentRef: transactionId },
+-      });
+-      
+-      if (saleByRef) {
+-        const newStatus = status === "paid" || status === "completed" ? "paid" : 
+-                         status.includes("fail") ? "failed" : "pending";
+-
+-        await prisma.sale.update({
+-          where: { id: saleByRef.id },
+-          data: { paymentStatus: newStatus },
+-        });
++    let venteConcernee = tx?.sale ?? null;
++    const transactionId = tx?.id ?? null;
+ 
+-        console.log(`[Wave Webhook] Vente ${saleByRef.id} mise à jour → ${newStatus}`);
+-      }
+-      return NextResponse.json({ received: true });
++    if (!venteConcernee) {
++      const sale = await prisma.sale.findFirst({ where: { paymentRef: reference } });
++      if (sale) venteConcernee = sale;
+     }
+ 
+-    let newStatus: "pending" | "paid" | "failed" | "cancelled" = "pending";
++    if (!venteConcernee) {
++      console.warn("[Wave Webhook] Aucune transaction pour", reference);
++      return NextResponse.json({ received: true }, { status: 200 });
++    }
++
++    /* ── 3. VÉRIFICATION AUPRÈS DE WAVE ─────────────────────────────────── */
++    let statutConfirme: string | null = null;
++    try {
++      const credentials = await getMerchantCredentials(venteConcernee.userId);
++      const provider = getPaymentProvider("wave" as any, credentials || undefined);
++
++      // ⚠️  Sans identifiants, le fournisseur ne peut RIEN confirmer :
++      //     on refuse de mettre à jour plutôt que de faire confiance au webhook.
++      if (provider && typeof provider.isConfigured === "function" && !provider.isConfigured()) {
++        console.warn(
++          `[Webhook] ⛔ ${provider.name || "fournisseur"} non configuré pour cette boutique — aucune modification`
++        );
++        return NextResponse.json(
++          {
++            received: true,
++            verified: false,
++            message: "Fournisseur de paiement non configuré : aucune modification effectuée",
++          },
++          { status: 200 }
++        );
++      }
+ 
+-    if (status === "paid" || status === "completed" || status === "success") {
+-      newStatus = "paid";
+-    } else if (status === "failed" || status === "error") {
+-      newStatus = "failed";
+-    } else if (status === "cancelled" || status === "canceled") {
+-      newStatus = "cancelled";
++      if (provider && typeof provider.checkStatus === "function") {
++        const resultat = await provider.checkStatus(reference);
++        statutConfirme = (resultat as any)?.status ?? null;
++      }
++    } catch (e: any) {
++      console.warn("[Wave Webhook] Vérification auprès de Wave impossible :", e?.message || e);
+     }
+ 
+-    await prisma.$transaction(async (prismaTx) => {
+-      await prismaTx.paymentTransaction.update({
+-        where: { id: tx.id },
+-        data: { 
+-          status: newStatus,
+-          updatedAt: new Date(),
+-        },
+-      });
++    /* ── 4. Sans confirmation → rien n'est modifié ──────────────────────── */
++    if (!statutConfirme) {
++      console.warn(
++        "[Wave Webhook] ⚠️  Statut NON confirmé par Wave — vente",
++        venteConcernee.id,
++        "laissée en",
++        venteConcernee.paymentStatus
++      );
++      return NextResponse.json(
++        { received: true, verified: false, message: "Statut non confirmé : aucune modification" },
++        { status: 200 }
++      );
++    }
+ 
++    /* ── 5. Enregistrement ──────────────────────────────────────────────── */
++    await prisma.$transaction(async (prismaTx) => {
++      if (transactionId) {
++        await prismaTx.paymentTransaction.update({
++          where: { id: transactionId },
++          data: { status: statutConfirme!, updatedAt: new Date() },
++        });
++      }
+       await prismaTx.sale.update({
+-        where: { id: tx.saleId },
+-        data: { paymentStatus: newStatus },
++        where: { id: venteConcernee!.id },
++        data: { paymentStatus: statutConfirme! },
+       });
+     });
+ 
+-    console.log(`[Wave Webhook] Transaction ${tx.id} mise à jour → ${newStatus}`);
++    console.log(`[Wave Webhook] ✅ Vente ${venteConcernee.id} → ${statutConfirme} (confirmé par Wave)`);
+ 
+-    return NextResponse.json({ success: true });
++    return NextResponse.json({ success: true, verified: true, status: statutConfirme });
+   } catch (error: any) {
+-    console.error("[Wave Webhook] Erreur:", error);
+-    // Toujours retourner 200 pour Wave (ils réessaient sinon)
++    console.error("[Wave Webhook] Erreur :", error);
+     return NextResponse.json({ received: true }, { status: 200 });
+   }
+ }
+diff --git a/src/app/api/register/route.ts b/src/app/api/register/route.ts
+index 36f950f..7d44cf9 100644
+--- a/src/app/api/register/route.ts
++++ b/src/app/api/register/route.ts
+@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
+ import { prisma } from "@/lib/prisma";
+ import bcrypt from "bcryptjs";
+ import { addMonths } from "@/lib/subscription";
++import { verifierLimite } from "@/lib/rate-limit";
+ 
+ function slugify(text: string) {
+   return text
+@@ -18,6 +19,19 @@ function generateReferralCode(base: string) {
+ 
+ export async function POST(request: Request) {
+   try {
++    // Limite anti-création en masse (pas de captcha, pas de vérification email) :
++    // sans elle, on pouvait créer des centaines de faux comptes.
++    const ip =
++      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
++      request.headers.get("x-real-ip") ||
++      "inconnue";
++    if (!verifierLimite(`register:${ip}`, 3, 60 * 60 * 1000, 60 * 60 * 1000).autorise) {
++      return NextResponse.json(
++        { error: "Trop de créations de compte depuis cet appareil. Réessayez dans une heure." },
++        { status: 429 }
++      );
++    }
++
+     const { name, email, password, shopName, phone, referralCode, billingInterval } = await request.json();
+ 
+     if (!email || !password || !shopName) {
+diff --git a/src/lib/auth.ts b/src/lib/auth.ts
+index 614f00f..2d66f63 100644
+--- a/src/lib/auth.ts
++++ b/src/lib/auth.ts
+@@ -2,6 +2,7 @@ import { NextAuthOptions } from "next-auth";
+ import CredentialsProvider from "next-auth/providers/credentials";
+ import { prisma } from "./prisma";
+ import bcrypt from "bcryptjs";
++import { verifierLimite, reinitialiserLimite } from "./rate-limit";
+ 
+ // Note: We intentionally avoid relying on Prisma generated types for logoUrl
+ // because Vercel build cache + Turbopack + prisma generate timing often
+@@ -19,6 +20,20 @@ export const authOptions: NextAuthOptions = {
+       async authorize(credentials) {
+         if (!credentials?.email || !credentials?.password) return null;
+ 
++        // === PROTECTION CONTRE LA FORCE BRUTE ===
++        // Sans cette limite, on pouvait tester des milliers de mots de passe
++        // en quelques minutes. 5 essais par email toutes les 15 minutes.
++        const cle = `login:${credentials.email.toLowerCase().trim()}`;
++        const limite = verifierLimite(cle, 5, 15 * 60 * 1000, 15 * 60 * 1000);
++        if (!limite.autorise) {
++          console.warn(`[AUTH] Trop de tentatives pour ${cle} — blocage ${limite.retryAfterSecondes}s`);
++          throw new Error(
++            `Trop de tentatives de connexion. Réessayez dans ${Math.ceil(
++              (limite.retryAfterSecondes || 900) / 60
++            )} minute(s).`
++          );
++        }
++
+         // 1. Chercher d'abord dans les super administrateurs
+         const superAdmin = await prisma.superAdmin.findUnique({
+           where: { email: credentials.email },
+@@ -28,6 +43,7 @@ export const authOptions: NextAuthOptions = {
+           const isValid = await bcrypt.compare(credentials.password, superAdmin.password);
+           if (!isValid) return null;
+ 
++          reinitialiserLimite(cle);
+           return {
+             id: superAdmin.id,
+             email: superAdmin.email,
+@@ -57,6 +73,7 @@ export const authOptions: NextAuthOptions = {
+           if (!isValid) return null;
+           if (user.isBlocked) return null;
+ 
++          reinitialiserLimite(cle);
+           return {
+             id: user.id,
+             email: user.email,
+@@ -88,6 +105,7 @@ export const authOptions: NextAuthOptions = {
+ 
+           if (owner?.isBlocked) return null;
+ 
++          reinitialiserLimite(cle);
+           return {
+             id: employee.id,
+             email: employee.email,
+diff --git a/src/lib/payments/orange-money.ts b/src/lib/payments/orange-money.ts
+index 6b60d71..0cdd1ed 100644
+--- a/src/lib/payments/orange-money.ts
++++ b/src/lib/payments/orange-money.ts
+@@ -44,13 +44,15 @@ export class OrangeMoneyProvider implements PaymentProviderInterface {
+     const authToken = await this.getBearerToken();
+ 
+     if (!merchantCode || !authToken) {
+-      console.warn("[Orange Money] Aucun identifiant marchand → simulation");
+-      const transactionId = `OM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
++      // ⚠️  AVANT : renvoyait success:true → le client croyait avoir payé, la
++      //     vente était créée et le stock décrémenté, sans aucun encaissement.
++      console.warn("[Orange Money] Aucun identifiant marchand : paiement REFUSÉ");
+       return {
+-        success: true,
+-        transactionId,
+-        status: "pending",
+-        message: `Paiement Orange Money initié (simulation - ajoutez votre Code Marchand + clé API). Validez sur votre téléphone ${request.phone}.`,
++        success: false,
++        transactionId: "",
++        status: "failed",
++        message:
++          "Le paiement Orange Money n'est pas encore configuré pour cette boutique. Choisissez un autre mode de paiement ou contactez le commerçant.",
+       };
+     }
+ 
+@@ -119,16 +121,25 @@ export class OrangeMoneyProvider implements PaymentProviderInterface {
+     }
+   }
+ 
++  /** Le marchand a-t-il renseigné ses identifiants ? */
++  isConfigured(): boolean {
++    return Boolean(this.getMerchantCode() && this.credentials?.omApiKey);
++  }
++
+   async checkStatus(transactionId: string): Promise<PaymentStatusResponse> {
+     const authToken = await this.getBearerToken();
+     const merchantCode = this.getMerchantCode();
+ 
+     if (!authToken || !merchantCode) {
+-      console.warn("[Orange Money] checkStatus → simulation");
++      // ⚠️  AVANT : renvoyait "paid" → n'importe quel webhook falsifié marquait
++      //     la vente comme payée. Un statut ne peut être "paid" QUE si Orange
++      //     Money l'a réellement confirmé.
++      console.warn("[Orange Money] checkStatus → identifiants absents : statut INCONNU");
+       return {
+-        success: true,
+-        status: "paid",
+-        message: "Paiement Orange Money confirmé (simulation).",
++        success: false,
++        status: "pending",
++        message:
++          "Identifiants Orange Money non configurés : impossible de confirmer le paiement. Renseignez vos identifiants marchands dans les Paramètres.",
+       };
+     }
+ 
+diff --git a/src/lib/payments/types.ts b/src/lib/payments/types.ts
+index 2aba9dc..16f37ae 100644
+--- a/src/lib/payments/types.ts
++++ b/src/lib/payments/types.ts
+@@ -22,6 +22,13 @@ export interface PaymentStatusResponse {
+ 
+ export interface PaymentProviderInterface {
+   name: string;
++  /**
++   * Le marchand a-t-il renseigné ses identifiants ?
++   * ⚠️  Si false, AUCUN paiement réel n'est possible : le fournisseur ne doit
++   *     ni initier de paiement, ni confirmer un statut. Sans ce contrôle, un
++   *     webhook falsifié pouvait marquer une vente comme payée.
++   */
++  isConfigured(): boolean;
+   initiatePayment(request: PaymentRequest): Promise<PaymentResponse>;
+   checkStatus(transactionId: string): Promise<PaymentStatusResponse>;
+ }
+diff --git a/src/lib/payments/wave.ts b/src/lib/payments/wave.ts
+index e7b6c0f..fa5df2e 100644
+--- a/src/lib/payments/wave.ts
++++ b/src/lib/payments/wave.ts
+@@ -25,13 +25,15 @@ export class WaveProvider implements PaymentProviderInterface {
+     const apiKey = this.getApiKey();
+ 
+     if (!apiKey) {
+-      console.warn("[Wave] Aucun clé API fournie → mode simulation");
+-      const transactionId = `WV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
++      // ⚠️  AVANT : success:true → le client croyait avoir payé sans que rien
++      //     ne soit encaissé.
++      console.warn("[Wave] Aucune clé API : paiement REFUSÉ");
+       return {
+-        success: true,
+-        transactionId,
+-        status: "pending",
+-        message: `Paiement Wave initié (simulation - ajoutez vos clés Wave Business). Ouvrez Wave sur ${request.phone}.`,
++        success: false,
++        transactionId: "",
++        status: "failed",
++        message:
++          "Le paiement Wave n'est pas encore configuré pour cette boutique. Choisissez un autre mode de paiement ou contactez le commerçant.",
+       };
+     }
+ 
+@@ -100,15 +102,23 @@ export class WaveProvider implements PaymentProviderInterface {
+     }
+   }
+ 
++  /** Le marchand a-t-il renseigné ses identifiants ? */
++  isConfigured(): boolean {
++    return Boolean(this.getApiKey());
++  }
++
+   async checkStatus(transactionId: string): Promise<PaymentStatusResponse> {
+     const apiKey = this.getApiKey();
+ 
+     if (!apiKey) {
+-      console.warn("[Wave] checkStatus → simulation");
++      // ⚠️  AVANT : renvoyait "paid" → tout webhook falsifié marquait la vente
++      //     comme payée. Un statut "paid" doit venir de Wave, jamais d'un défaut.
++      console.warn("[Wave] checkStatus → identifiants absents : statut INCONNU");
+       return {
+-        success: true,
+-        status: "paid",
+-        message: "Paiement Wave confirmé (simulation).",
++        success: false,
++        status: "pending",
++        message:
++          "Identifiants Wave non configurés : impossible de confirmer le paiement. Renseignez vos identifiants marchands dans les Paramètres.",
+       };
+     }
+ 
+diff --git a/src/lib/rate-limit.ts b/src/lib/rate-limit.ts
+new file mode 100644
+index 0000000..ba1ab44
+--- /dev/null
++++ b/src/lib/rate-limit.ts
+@@ -0,0 +1,97 @@
++/**
++ * ============================================================================
++ *  LIMITEUR DE DÉBIT (protection contre la force brute et le spam)
++ * ============================================================================
++ *  Pourquoi ? Sans limite, un attaquant peut tester des milliers de mots de
++ *  passe en quelques minutes. C'est la façon la plus courante de casser un
++ *  compte commerçant.
++ *
++ *  Comment ça marche : on compte les tentatives par clé (email, IP) dans une
++ *  fenêtre de temps. Au-delà de la limite, on refuse pendant un moment.
++ *
++ *  ⚠️  Stockage en mémoire : chaque instance de serveur a son propre compteur.
++ *      C'est suffisant pour arrêter un attaquant qui martèle UN compte
++ *      (il tombe forcément sur la même instance). Pour une protection
++ *      parfaite à grande échelle, il faudrait un stockage partagé (Redis).
++ * ============================================================================
++ */
++
++interface Compteur {
++  tentatives: number;
++  premierEssai: number;
++  bloqueJusqua: number | null;
++}
++
++const compteurs = new Map<string, Compteur>();
++
++/** Nettoyage périodique pour éviter que la mémoire ne grossisse sans fin */
++function nettoyer() {
++  const maintenant = Date.now();
++  for (const [cle, c] of compteurs) {
++    const expire = c.bloqueJusqua ? c.bloqueJusqua : c.premierEssai + 60 * 60 * 1000;
++    if (maintenant > expire) compteurs.delete(cle);
++  }
++}
++setInterval(nettoyer, 10 * 60 * 1000).unref?.();
++
++export interface ResultatLimite {
++  autorise: boolean;
++  restant: number;
++  retryAfterSecondes?: number;
++}
++
++/**
++ * Enregistre une tentative et dit si elle est autorisée.
++ *
++ * @param cle        identifiant (ex. « login:email@exemple.com »)
++ * @param max        nombre de tentatives autorisées dans la fenêtre
++ * @param fenetreMs  durée de la fenêtre (ex. 15 minutes)
++ * @param blocageMs  durée du blocage une fois la limite atteinte
++ */
++export function verifierLimite(
++  cle: string,
++  max = 5,
++  fenetreMs = 15 * 60 * 1000,
++  blocageMs = 15 * 60 * 1000
++): ResultatLimite {
++  const maintenant = Date.now();
++  const c = compteurs.get(cle);
++
++  /* Déjà bloqué ? */
++  if (c?.bloqueJusqua && maintenant < c.bloqueJusqua) {
++    return {
++      autorise: false,
++      restant: 0,
++      retryAfterSecondes: Math.ceil((c.bloqueJusqua - maintenant) / 1000),
++    };
++  }
++
++  /* Fenêtre expirée → on repart de zéro */
++  if (!c || maintenant - c.premierEssai > fenetreMs) {
++    compteurs.set(cle, { tentatives: 1, premierEssai: maintenant, bloqueJusqua: null });
++    return { autorise: true, restant: max - 1 };
++  }
++
++  /* Dans la fenêtre */
++  c.tentatives += 1;
++
++  if (c.tentatives > max) {
++    c.bloqueJusqua = maintenant + blocageMs;
++    return { autorise: false, restant: 0, retryAfterSecondes: Math.ceil(blocageMs / 1000) };
++  }
++
++  return { autorise: true, restant: max - c.tentatives };
++}
++
++/** Réinitialise le compteur (à appeler après une connexion réussie) */
++export function reinitialiserLimite(cle: string) {
++  compteurs.delete(cle);
++}
++
++/** Combien de tentatives restent avant blocage ? (pour informer l'utilisateur) */
++export function tentativesRestantes(cle: string, max = 5): number {
++  const c = compteurs.get(cle);
++  if (!c) return max;
++  if (c.bloqueJusqua && Date.now() < c.bloqueJusqua) return 0;
++  return Math.max(0, max - c.tentatives);
++}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeAccess } from "@/lib/access";
+import { verifierLimite } from "@/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   try {
@@ -8,6 +9,19 @@ export async function POST(req: NextRequest) {
 
     if (!email || typeof email !== "string") {
       return NextResponse.json({ error: "Email requis" }, { status: 400 });
+    }
+
+    // Limite : sans elle, un attaquant pouvait balayer des milliers d'adresses
+    // pour découvrir quels emails sont enregistrés.
+    const ip =
+      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      req.headers.get("x-real-ip") ||
+      "inconnue";
+    if (!verifierLimite(`check-status:${ip}`, 20, 10 * 60 * 1000, 10 * 60 * 1000).autorise) {
+      return NextResponse.json(
+        { blocked: false, message: "Trop de vérifications. Réessayez dans quelques minutes.", access: null },
+        { status: 429 }
+      );
     }
 
     const user = await prisma.user.findUnique({
