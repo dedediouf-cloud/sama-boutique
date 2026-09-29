@@ -31,12 +31,50 @@ let urlArg = null;
 let remplir = false;
 let slug = "demo";
 let aide = false;
+let fichierUrl = null;
+let verifierSeulement = false;
 
 for (const a of args) {
   if (a === "--remplir" || a === "-r") remplir = true;
   else if (a === "--aide" || a === "-h") aide = true;
+  else if (a === "--verifier" || a === "-v") verifierSeulement = true;
   else if (a.startsWith("--slug=")) slug = a.split("=")[1].trim().toLowerCase();
+  else if (a.startsWith("--fichier-url=")) fichierUrl = a.split("=").slice(1).join("=").trim();
   else if (/^(file:|postgres(ql)?:\/\/)/i.test(a)) urlArg = a;
+}
+
+/* ⚡ Lecture de l'URL depuis un FICHIER
+ * Pourquoi ? Dans une invite de commandes Windows, les caractères
+ * % ! ^ des mots de passe sont interprétés et abîment l'URL.
+ * Un fichier, lui, est transmis tel quel : aucune interprétation.
+ */
+if (fichierUrl) {
+  const fs = require("fs");
+  const chemin = fichierUrl.replace(/^"|"$/g, "").trim();
+  if (!fs.existsSync(chemin)) {
+    console.log(`\n❌ Fichier introuvable : ${chemin}\n`);
+    process.exit(1);
+  }
+  // on prend la 1re ligne non vide, et on retire guillemets et espaces
+  const lignes = fs.readFileSync(chemin, "utf-8").split(/\r?\n/);
+  const utile = lignes.map((l) => l.trim()).find((l) => l && !l.startsWith("#") && !l.startsWith("//"));
+  if (!utile) {
+    console.log(`\n❌ Le fichier ${chemin} ne contient aucune URL.\n`);
+    console.log("   Colle ton URL de production sur la première ligne.\n");
+    process.exit(1);
+  }
+  urlArg = utile.replace(/^["']|["']$/g, "");
+
+  // contrôle de forme : évite les erreurs obscures si on a collé autre chose
+  if (!/^(file:|postgres(ql)?:\/\/)/i.test(urlArg)) {
+    console.log("\n❌ Ce n'est pas une URL de base de données :");
+    console.log(`   « ${urlArg.slice(0, 70)} »\n`);
+    console.log("   Une URL valide ressemble à :");
+    console.log("     postgresql://neondb_owner:npg_XXX@ep-xxx.neon.tech/neondb?sslmode=require");
+    console.log("\n   ⚠️  N'utilise PAS l'URL « Pooling / Accelerate » si tu en as une,");
+    console.log("       prends bien celle qui commence par postgresql://\n");
+    process.exit(1);
+  }
 }
 
 if (urlArg) process.env.DATABASE_URL = urlArg;
@@ -60,9 +98,13 @@ if (aide) {
   node scripts/creer-boutique-demo.js [options] [URL de la base]
 
   Options :
-    --remplir, -r      Supprime les produits de la démo et les recrée
-    --slug=xxx         Utiliser un autre slug (défaut : demo)
-    --aide, -h         Cette aide
+    --remplir, -r          Supprime les produits de la démo et les recrée
+    --verifier, -v         Vérifie seulement, ne crée rien
+    --fichier-url=fichier  Lit l'URL depuis un fichier texte
+                           (RECOMMANDÉ sous Windows : évite les problèmes de
+                            caractères % ! ^ dans les mots de passe)
+    --slug=xxx             Utiliser un autre slug (défaut : demo)
+    --aide, -h             Cette aide
 
   Exemples :
     node scripts/creer-boutique-demo.js "file:./dev.db"
@@ -167,6 +209,41 @@ async function main() {
     }
     console.log();
     process.exitCode = 1;
+    return;
+  }
+
+  /* ── Mode vérification seule ───────────────────────────────────────── */
+  if (verifierSeulement) {
+    const existante = await prisma.user.findUnique({
+      where: { shopSlug: slug },
+      select: { id: true, shopName: true },
+    });
+
+    console.log(couleurs.gras("   VÉRIFICATION"));
+    if (!existante) {
+      console.log(couleurs.rouge(`   ❌ Aucune boutique avec le slug « ${slug} » dans CETTE base.`));
+      console.log();
+      console.log("   → La démonstration ne s'affichera pas sur ton site.");
+      console.log(couleurs.gris(`     Relance sans --verifier pour la créer :`));
+      console.log(couleurs.gris(`     node scripts/creer-boutique-demo.js --fichier-url=url-production.txt`));
+      process.exitCode = 1;
+    } else {
+      const total = await prisma.product.count({ where: { userId: existante.id } });
+      const enStock = await prisma.product.count({
+        where: { userId: existante.id, quantity: { gt: 0 } },
+      });
+      console.log(couleurs.vert(`   ✅ Boutique « ${existante.shopName} » trouvée`));
+      console.log(`      slug          : ${slug}`);
+      console.log(`      produits      : ${total} (dont ${enStock} visibles)`);
+      console.log(`      adresse       : /catalog/${slug}`);
+      if (enStock === 0) {
+        console.log();
+        console.log(couleurs.jaune("   ⚠️  Aucun produit visible : la démo paraîtra vide."));
+        console.log(couleurs.gris("      Relance avec --remplir pour les recréer."));
+        process.exitCode = 1;
+      }
+    }
+    console.log();
     return;
   }
 
