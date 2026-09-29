@@ -9,6 +9,20 @@ import {
 const OM_API_BASE = "https://api.orange.com";
 const OM_WEBPAY_PATH = "/orange-money-webpay/dev/v1/webpayment"; // Sandbox + prod often share structure
 
+/**
+ * Adresse publique du site, utilisée pour les URLs envoyées à Orange Money.
+ * Priorité à NEXT_PUBLIC_APP_URL (à définir avec le vrai domaine), puis
+ * NEXTAUTH_URL, puis la variable Vercel automatique.
+ */
+function baseUrl(): string {
+  const url =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
+    "http://localhost:3000";
+  return url.replace(/\/$/, "");
+}
+
 export class OrangeMoneyProvider implements PaymentProviderInterface {
   name = "Orange Money";
   private credentials?: MerchantCredentials;
@@ -62,9 +76,15 @@ export class OrangeMoneyProvider implements PaymentProviderInterface {
         currency: "XOF",
         order_id: request.reference || `CAT-${Date.now()}`,
         amount: Math.round(request.amount),
-        return_url: `${process.env.NEXTAUTH_URL || "https://votre-boutique.com"}/dashboard?payment=om-success`,
-        cancel_url: `${process.env.NEXTAUTH_URL || "https://votre-boutique.com"}/dashboard?payment=om-cancel`,
-        notif_url: `${process.env.NEXTAUTH_URL || "https://votre-boutique.com"}/api/payments/om-webhook`,
+        // URLs de retour : le client revient ici après son paiement
+        return_url: `${baseUrl()}/dashboard?payment=om-success`,
+        cancel_url: `${baseUrl()}/dashboard?payment=om-cancel`,
+        // ⚠️  CORRIGÉ : cette URL pointait vers /api/payments/om-webhook,
+        //     une route QUI N'EXISTE PAS. Orange Money aurait donc reçu une
+        //     erreur 404 à chaque notification, et le paiement n'aurait
+        //     jamais été confirmé automatiquement.
+        //     La bonne route est /api/payments/webhooks/orange-money
+        notif_url: `${baseUrl()}/api/payments/webhooks/orange-money`,
         lang: "fr",
         // Optionnel : référence client
         reference: request.reference,

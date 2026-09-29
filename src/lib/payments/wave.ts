@@ -8,6 +8,19 @@ import {
 
 const WAVE_API_BASE = "https://api.wave.com/v1";
 
+/**
+ * Adresse publique du site (URLs envoyées à Wave).
+ * Priorité : NEXT_PUBLIC_APP_URL (le vrai domaine), puis NEXTAUTH_URL.
+ */
+function baseUrl(): string {
+  const url =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
+    "http://localhost:3000";
+  return url.replace(/\/$/, "");
+}
+
 export class WaveProvider implements PaymentProviderInterface {
   name = "Wave";
   private credentials?: MerchantCredentials;
@@ -51,9 +64,11 @@ export class WaveProvider implements PaymentProviderInterface {
         payload.merchant_id = merchantId;
       }
 
-      // On peut ajouter des URLs de retour (optionnel pour maintenant)
-      // payload.success_url = `${process.env.NEXTAUTH_URL}/dashboard?payment=success`;
-      // payload.cancel_url = `${process.env.NEXTAUTH_URL}/dashboard?payment=cancelled`;
+      // URLs de retour : là où le client revient après avoir payé (ou annulé).
+      // Sans elles, Wave affiche sa propre page de fin et le client ne
+      // retrouve pas la boutique.
+      payload.success_url = `${baseUrl()}/dashboard?payment=wave-success`;
+      payload.cancel_url = `${baseUrl()}/dashboard?payment=wave-cancel`;
 
       console.log("[Wave] Appel API réel → création checkout session", {
         amount: payload.amount,
