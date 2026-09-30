@@ -1,0 +1,40 @@
+diff --git a/src/app/guide/page.tsx b/src/app/guide/page.tsx
+index 02a806c..9ca594c 100644
+--- a/src/app/guide/page.tsx
++++ b/src/app/guide/page.tsx
+@@ -34,7 +34,7 @@ import {
+  */
+ 
+ export const metadata: Metadata = {
+-  title: `Guide utilisateur — ${GUIDE_TITRE}`,
++  title: GUIDE_TITRE,   // « Guide utilisateur SamaBoutique » (sans répétition)
+   description: GUIDE_INTRO,
+   keywords: [
+     "guide logiciel boutique",
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+index cc2df83..b9f3c6b 100644
+--- a/src/app/layout.tsx
++++ b/src/app/layout.tsx
+@@ -34,6 +34,22 @@ const playfair = Playfair_Display({
+ export const metadata: Metadata = {
+   title: "SamaBoutique",
+   description: "Gérez votre boutique, vos ventes et votre catalogue en ligne avec SamaBoutique",
++
++  // ═══════════════════════════════════════════════════════════════════════
++  //  VÉRIFICATION GOOGLE SEARCH CONSOLE
++  // ═══════════════════════════════════════════════════════════════════════
++  //  Cette clé prouve à Google que le site t'appartient. Sans elle, Google
++  //  refuse d'explorer le site : aucun référencement n'est possible.
++  //
++  //  Elle est placée dans le layout racine, donc présente sur TOUTES les
++  //  pages — Google la trouvera quelle que soit l'adresse qu'il visite.
++  //
++  //  ⚠️  Ne la supprime pas : si tu la retires, Google désindexera
++  //      progressivement ton site.
++  // ═══════════════════════════════════════════════════════════════════════
++  verification: {
++    google: "Z6ezkuUgZt3uoK8c98Tz6ZfhwWYl2byNdDEGTcwL7c4",
++  },
+ };
+ 
+ export default function RootLayout({

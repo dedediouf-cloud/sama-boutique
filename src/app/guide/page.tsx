@@ -34,7 +34,7 @@ import {
  */
 
 export const metadata: Metadata = {
-  title: `Guide utilisateur — ${GUIDE_TITRE}`,
+  title: GUIDE_TITRE,   // « Guide utilisateur SamaBoutique » (sans répétition)
   description: GUIDE_INTRO,
   keywords: [
     "guide logiciel boutique",

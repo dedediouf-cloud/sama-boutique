@@ -34,6 +34,22 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "SamaBoutique",
   description: "Gérez votre boutique, vos ventes et votre catalogue en ligne avec SamaBoutique",
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  VÉRIFICATION GOOGLE SEARCH CONSOLE
+  // ═══════════════════════════════════════════════════════════════════════
+  //  Cette clé prouve à Google que le site t'appartient. Sans elle, Google
+  //  refuse d'explorer le site : aucun référencement n'est possible.
+  //
+  //  Elle est placée dans le layout racine, donc présente sur TOUTES les
+  //  pages — Google la trouvera quelle que soit l'adresse qu'il visite.
+  //
+  //  ⚠️  Ne la supprime pas : si tu la retires, Google désindexera
+  //      progressivement ton site.
+  // ═══════════════════════════════════════════════════════════════════════
+  verification: {
+    google: "Z6ezkuUgZt3uoK8c98Tz6ZfhwWYl2byNdDEGTcwL7c4",
+  },
 };
 
 export default function RootLayout({
