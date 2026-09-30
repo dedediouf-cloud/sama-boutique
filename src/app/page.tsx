@@ -194,6 +194,9 @@ export default async function HomePage() {
             <a href="#tarif" className="hover:text-[#B87333] transition-colors">
               Tarif
             </a>
+            <Link href="/guide" className="hover:text-[#B87333] transition-colors">
+              Guide
+            </Link>
             {demoDisponible && (
               <Link href={`/catalog/${SLUG_DEMO}`} className="hover:text-[#B87333] transition-colors">
                 Démo
@@ -323,9 +326,16 @@ export default async function HomePage() {
       {/* ═══════════════════ COMMENT ÇA MARCHE ═══════════════════ */}
       <section className="py-16 sm:py-20">
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
-          <h2 className="font-[family-name:var(--font-playfair)] text-3xl sm:text-4xl font-semibold text-center mb-12">
+          <h2 className="font-[family-name:var(--font-playfair)] text-3xl sm:text-4xl font-semibold text-center mb-3">
             Vous êtes prêt en 3 étapes
           </h2>
+          <p className="text-center text-[#5C4033] mb-12 max-w-2xl mx-auto">
+            Et pour aller plus loin,{" "}
+            <Link href="/guide" className="text-[#B87333] font-medium hover:underline">
+              consultez le guide complet
+            </Link>{" "}
+            : stock, caisse, clients, livraisons, promotions, abonnements.
+          </p>
           <div className="grid sm:grid-cols-3 gap-6">
             {etapes.map((e) => (
               <div key={e.n} className="text-center">
@@ -477,6 +487,9 @@ export default async function HomePage() {
           <div className="flex items-center gap-6">
             <Link href="/login" className="hover:text-[#FDF6E3] transition-colors">
               Se connecter
+            </Link>
+            <Link href="/guide" className="hover:text-[#FDF6E3] transition-colors">
+              Guide utilisateur
             </Link>
             <Link href="/register" className="hover:text-[#FDF6E3] transition-colors">
               Créer ma boutique

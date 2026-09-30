@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { isSuperAdmin } from "@/lib/roles";
 import { invalidateAccess } from "@/lib/access";
+import { sendEmail, abonnementEmail, appBaseUrl } from "@/lib/email";
 import { getNextDueDate, addMonths, getAnnualAmount } from "@/lib/subscription";
 
 export async function POST(
@@ -119,6 +120,32 @@ export async function POST(
         }
       }
     }
+
+    /* ── EMAIL DE CONFIRMATION ───────────────────────────────────────────
+     *  Envoyé au commerçant dès que son abonnement est activé, avec le
+     *  montant, la période couverte et la prochaine échéance.
+     *  Sans effet sur la réponse : l'envoi se fait en arrière-plan.
+     */
+    const mail = abonnementEmail({
+      shopName: boutique.shopName,
+      to: boutique.email,
+      montant: finalAmount,
+      intervalle: interval,
+      periodeFin: nextDueDate,
+      appUrl: appBaseUrl(),
+      supportWhatsapp: process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP || null,
+      supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL || null,
+    });
+    sendEmail({
+      to: boutique.email,
+      subject: mail.subject,
+      html: mail.html,
+      text: mail.text,
+    })
+      .then((r) => {
+        if (r.ok) console.log(`[ABONNEMENT] Confirmation envoyée à ${boutique.email}`);
+      })
+      .catch(() => {});
 
     return NextResponse.json({
       message: `Abonnement ${interval === "annual" ? "annuel" : "mensuel"} payé : ${finalAmount.toLocaleString("fr-FR")} FCFA jusqu'au ${nextDueDate.toLocaleDateString("fr-FR")}`,

@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { isSuperAdmin } from "@/lib/roles";
+import { sendEmail, bienvenueEmail, appBaseUrl } from "@/lib/email";
 
 function generateReferralCode(base: string) {
   const clean = base
@@ -129,6 +130,21 @@ export async function POST(req: NextRequest) {
         referralCode,
       },
     });
+
+    // Email de bienvenue (même logique que l'inscription publique)
+    const mail = bienvenueEmail({
+      shopName: user.shopName,
+      to: user.email,
+      trialDays,
+      appUrl: appBaseUrl(),
+      supportWhatsapp: process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP || null,
+      supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL || null,
+    });
+    sendEmail({ to: user.email, subject: mail.subject, html: mail.html, text: mail.text })
+      .then((r) => {
+        if (r.ok) console.log(`[SUPERADMIN] Email de bienvenue envoyé à ${user.email}`);
+      })
+      .catch(() => {});
 
     return NextResponse.json({
       message: "Boutique créée",

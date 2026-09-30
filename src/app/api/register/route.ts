@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import { addMonths } from "@/lib/subscription";
 import { verifierLimite } from "@/lib/rate-limit";
+import { sendEmail, bienvenueEmail, appBaseUrl } from "@/lib/email";
 
 function slugify(text: string) {
   return text
@@ -130,6 +131,34 @@ export async function POST(request: Request) {
         });
       }
     }
+
+    /* ── EMAIL DE BIENVENUE (avec le guide utilisateur) ──────────────────
+     *  ⚠️  On ne fait PAS attendre la réponse : le commerçant est redirigé
+     *      immédiatement, l'email part en arrière-plan. Si l'envoi échoue
+     *      (clé Resend absente, adresse invalide), l'inscription reste
+     *      réussie — on trace simplement l'erreur.
+     */
+    const mail = bienvenueEmail({
+      shopName: user.shopName,
+      to: user.email,
+      trialDays,
+      appUrl: appBaseUrl(),
+      supportWhatsapp: process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP || null,
+      supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL || null,
+    });
+
+    sendEmail({
+      to: user.email,
+      subject: mail.subject,
+      html: mail.html,
+      text: mail.text,
+    })
+      .then((r) => {
+        if (r.ok) console.log(`[REGISTER] Email de bienvenue envoyé à ${user.email}`);
+        else if (r.skipped) console.log(`[REGISTER] Email de bienvenue ignoré (RESEND_API_KEY absente)`);
+        else console.warn(`[REGISTER] Email de bienvenue en échec : ${r.error}`);
+      })
+      .catch((e) => console.error("[REGISTER] Email de bienvenue :", e?.message || e));
 
     return NextResponse.json({
       user: {

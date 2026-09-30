@@ -1,0 +1,271 @@
+════════════════════════════════════════════════════════════════════
+  RÉFÉRENCEMENT GOOGLE + EMAILS AUTOMATIQUES
+════════════════════════════════════════════════════════════════════
+
+  Ce correctif livre les deux sujets demandés : ① et ② .
+  Ils sont liés : la page /guide sert aux commerçants ET à Google.
+
+════════════════════════════════════════════════════════════════════
+  CE QUI A ÉTÉ CONSTRUIT
+════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────
+① RÉFÉRENCEMENT GOOGLE
+────────────────────────────────────────────────────────────────────
+
+  ► robots.txt          (généré automatiquement par Next.js)
+      Accessible sur /robots.txt
+      • AUTORISE : la page d'accueil, le guide, les catalogues des
+        boutiques, l'inscription
+      • INTERDIT : l'application privée (tableau de bord, caisse,
+        clients…), les API, l'espace Super Admin
+      Pourquoi interdire le reste ? Pour que Google ne gaspille pas
+      son temps sur des pages auxquelles il n'a pas accès et se
+      concentre sur ce qui compte.
+
+  ► sitemap.xml         (généré automatiquement)
+      Accessible sur /sitemap.xml
+      • La liste complète des pages à indexer
+      • Ajoute AUTOMATIQUEMENT le catalogue de chaque boutique
+        → les produits de tes commerçants deviennent trouvables
+          sur Google. C'est un vrai argument de vente.
+      • Se régénère tout seul toutes les heures
+
+  ► PAGE /guide          (le plus important)
+      Ton guide utilisateur Word (18 sections, 2 700 mots) transformé
+      en page web publique :
+        • consultable sur téléphone (un .docx c'est pénible)
+        • toujours à jour
+        • 17 sections, 41 sous-sections, sommaire cliquable
+        • titre, description et mots-clés optimisés
+        • données structurées « HowTo » pour Google
+
+      C'est exactement le type de contenu que Google valorise : long,
+      unique et utile. Les curieux qui cherchent « comment gérer le
+      stock d'une boutique » ou « logiciel caisse Sénégal » peuvent
+      tomber dessus, puis découvrir l'application.
+
+  ► 3 liens vers /guide sur la page d'accueil
+      menu · pied de page · section « 3 étapes »
+      (les liens internes aident Google à comprendre la structure)
+
+────────────────────────────────────────────────────────────────────
+② EMAILS AUTOMATIQUES
+────────────────────────────────────────────────────────────────────
+
+  3 nouveaux emails, tous en français, aux couleurs de l'app :
+
+  ► 1. BIENVENUE  (envoyé à la création du compte)
+      • le lien de connexion
+      • la durée de l'essai et sa date de fin
+      • « Par où commencer » en 3 étapes
+      • LE LIEN VERS LE GUIDE UTILISATEUR  ← ta demande
+      • rassure : les données sont conservées après l'essai
+
+  ► 2. ABONNEMENT ACTIVÉ  (à chaque paiement)
+      • montant, formule (mensuel/annuel), échéance
+      • tableau récapitulatif clair
+      • rappel que les sauvegardes sont automatiques
+
+  ► 3. RAPPEL D'ÉCHÉANCE  (J-3 puis le jour J)
+      • le montant à régler et la date
+      • « vos données sont conservées »
+      • le rappel n'est envoyé qu'UNE fois par cycle (anti-doublon)
+
+  ⚡  Les emails partent en ARRIÈRE-PLAN : le commerçant n'attend
+      jamais, et si l'envoi échoue l'inscription reste réussie.
+
+════════════════════════════════════════════════════════════════════
+  📘 LE GUIDE SE MET À JOUR TOUT SEUL
+════════════════════════════════════════════════════════════════════
+
+  Tu as modifié ton guide Word ? Une seule commande :
+
+      npm run guide:generer
+
+  Le script lit le fichier Word et régénère la page /guide.
+  Tu publies, c'est en ligne. Rien à recopier à la main.
+
+  (Le fichier Word a été ajouté au dépôt : le script fonctionne
+   donc même après un nouveau clone du projet.)
+
+════════════════════════════════════════════════════════════════════
+  ⚠️  CE QU'IL TE RESTE À FAIRE — 3 ÉTAPES
+════════════════════════════════════════════════════════════════════
+
+  ÉTAPE 1 — Appliquer et publier ce correctif  (5 minutes)
+
+      cd C:\sama-boutique
+      git apply --ignore-whitespace fix-seo-emails.patch
+      git add -A
+      git commit -m "feat: referencement Google (robots, sitemap, page guide) + emails automatiques"
+      git push
+
+  ──────────────────────────────────────────────────────────────────
+  ÉTAPE 2 — GOOGLE SEARCH CONSOLE  (10 minutes, LE plus important)
+  ──────────────────────────────────────────────────────────────────
+
+  ⚠️  Sans cette étape, Google ne saura JAMAIS que ton site existe.
+      C'est obligatoire — aucun sitemap ne remplace ça.
+
+    1. Va sur  https://search.google.com/search-console
+    2. Connecte-toi avec ton compte Google
+    3. Clique « Ajouter une propriété »
+    4. Choisis « Préfixe de l'URL » et tape :
+            https://www.sama-boutique.app
+       (⚠️ AVEC « www » : c'est l'adresse où tes visiteurs arrivent)
+    5. Google te demande de prouver que le site est à toi.
+       Le plus simple : choisis la méthode « Balise HTML ».
+       Google te donne une ligne comme :
+            <meta name="google-site-verification" content="XXXXX" />
+       ENVOIE-MOI CETTE LIGNE, je l'intègre au site et tu n'as
+       plus qu'à cliquer « Vérifier ».
+       (L'autre méthode, « Enregistrement DNS », se fait chez ton
+        hébergeur de domaine si tu préfères.)
+    6. Une fois vérifié : menu « Sitemaps » → tape  sitemap.xml
+       → Envoyer
+
+    Après ça, Google commencera à explorer ton site. Premiers
+    résultats visibles en général sous 3 à 14 jours.
+
+  ──────────────────────────────────────────────────────────────────
+  ÉTAPE 3 — GOOGLE BUSINESS PROFILE  (20 minutes)
+  ──────────────────────────────────────────────────────────────────
+
+  C'est LE levier le plus efficace pour être trouvé sur « sama
+  boutique ». Ça crée une fiche gratuite avec ton nom, que Google
+  affiche dans son panneau de droite et sur Maps.
+
+    1. Va sur  https://business.google.com
+    2. « Ajouter votre établissement »
+    3. Nom : SamaBoutique
+    4. Catégorie : « Service de logiciel » ou « Développeur de
+       logiciels »
+    5. Zone desservie : Dakar (ou tout le Sénégal)
+    6. Ajoute ton numéro WhatsApp et l'adresse du site
+    7. Valide (Google envoie un courrier ou un code par téléphone)
+
+  ──────────────────────────────────────────────────────────────────
+  ET DANS VERCEL — 2 variables à ajouter
+  ──────────────────────────────────────────────────────────────────
+
+    NEXT_PUBLIC_SUPPORT_WHATSAPP = +221XXXXXXXXX
+    NEXT_PUBLIC_SUPPORT_EMAIL    = contact@sama-boutique.app
+
+  Elles servent :
+    • aux boutons de contact de ta page d'accueil
+    • au bouton « Activer via WhatsApp » quand l'essai se termine
+    • aux pieds de page des emails automatiques
+
+════════════════════════════════════════════════════════════════════
+  ⚠️  POUR QUE LES EMAILS PARTENT VRAIMENT — 2 RÉGLAGES
+════════════════════════════════════════════════════════════════════
+
+  Aujourd'hui, sans ces réglages, les emails sont IGNORÉS (le code
+  trace « RESEND_API_KEY absente » et continue). Rien ne casse,
+  mais personne ne reçoit rien.
+
+  ► 1. La clé Resend
+
+      • Crée un compte sur  https://resend.com  (gratuit :
+        3 000 emails/mois, largement suffisant au début)
+      • Crée une clé API
+      • Ajoute-la dans Vercel :  RESEND_API_KEY = re_XXXXXX
+
+  ► 2. Vérifier ton domaine  (INDISPENSABLE)
+
+      ⚠️  Sans cette étape, Resend n'autorise l'envoi QU'À TA PROPRE
+          adresse email. Tes commerçants ne recevraient RIEN.
+
+      Dans Resend → « Domains » → « Add Domain » → sama-boutique.app
+      Resend te donne 3 enregistrements DNS (SPF, DKIM) à ajouter
+      chez ton hébergeur de domaine. Une fois validés, tu peux
+      envoyer à n'importe quelle adresse.
+
+      Puis dans Vercel :
+            EMAIL_FROM = SamaBoutique <contact@sama-boutique.app>
+
+  Quand ces 2 réglages sont faits, tu peux tester :
+      • Inscris-toi avec une adresse email à toi → tu reçois le
+        message de bienvenue avec le lien du guide
+      • Demande-moi de tester le reste si besoin
+
+════════════════════════════════════════════════════════════════════
+  VÉRIFICATIONS EFFECTUÉES
+════════════════════════════════════════════════════════════════════
+
+  ✅ robots.txt servi, avec les bons allow/disallow et le bon domaine
+  ✅ sitemap.xml servi : 4 adresses, dont le catalogue de démo
+  ✅ page /guide : 2 815 mots, 17 sections, 41 sous-sections,
+     servie en 13 millisecondes, 8/8 contrôles de contenu
+  ✅ 3 liens vers /guide sur la page d'accueil
+  ✅ email de bienvenue déclenché à l'inscription (testé)
+  ✅ email de confirmation déclenché au paiement d'abonnement (testé)
+  ✅ rappel d'échéance détecté par le cron (J-3 → RENEW-2026-10-J3)
+  ✅ anti-doublon des rappels
+  ✅ sans clé Resend : tout est ignoré proprement, rien ne casse
+  ✅ non-régression : accueil, guide, connexion, inscription,
+     catalogue, Super Admin, API → toutes les pages répondent 200
+  ✅ build : « Compiled successfully »
+  ✅ patch appliqué sur un clone neuf, build réussi
+  ✅ script de régénération du guide fonctionnel après un clone
+
+  ⚠️  Note technique : le fichier Word (.docx) est un fichier binaire.
+      Le patch l'inclut donc en version « binaire » — d'où sa taille
+      (157 Ko). C'est normal et sans conséquence.
+
+════════════════════════════════════════════════════════════════════
+  HONNÊTETÉ SUR LE RÉFÉRENCEMENT
+════════════════════════════════════════════════════════════════════
+
+  Ce correctif met en place TOUT ce qui est techniquement nécessaire.
+  Mais être n°1 sur « sama boutique » ne dépend pas que de ça :
+
+  • « sama » est un mot courant en wolof (« mon ») et plusieurs
+    entreprises l'utilisent déjà. « boutique » est aussi très courant.
+    → Se positionner premier sur ces deux mots prendra des semaines
+      ou des mois, même avec un site parfait.
+
+  • Ce qui te ramènera des clients RÉELS beaucoup plus vite :
+      – Google Business Profile (étape 3) : apparaître sur Maps
+      – la page /guide : capter les recherches précises
+        (« comment gérer son stock », « logiciel caisse Sénégal »)
+      – du bouche-à-oreille et des partages WhatsApp
+
+  • Le référencement est un marathon, pas un sprint. Compte 2 à 4
+    semaines avant les premiers visiteurs venus de Google, et
+    plusieurs mois pour une position solide.
+
+════════════════════════════════════════════════════════════════════
+  CONTENU DU CORRECTIF (14 fichiers)
+════════════════════════════════════════════════════════════════════
+
+  NOUVEAUX
+    src/app/guide/page.tsx              la page guide publique
+    src/app/robots.ts                   robots.txt
+    src/app/sitemap.ts                  sitemap.xml
+    src/lib/guide-data.ts               contenu extrait du guide
+    scripts/generer-guide.js            régénère le guide
+    SamaBoutique-Guide-Utilisateur.docx  le guide source
+    generate_docs.py                    le générateur du .docx
+
+  MODIFIÉS
+    src/lib/email.ts                             3 nouveaux modèles
+    src/app/api/register/route.ts                email de bienvenue
+    src/app/api/superadmin/boutiques/route.ts    idem (création manuelle)
+    .../boutiques/[id]/pay-subscription/route.ts confirmation
+    src/app/api/cron/trial-reminders/route.ts    rappels d'échéance
+    src/app/page.tsx                             3 liens vers /guide
+    package.json                                 npm run guide:generer
+
+════════════════════════════════════════════════════════════════════
+  PROCHAINE ÉTAPE APRÈS CECI
+════════════════════════════════════════════════════════════════════
+
+  Il restera le sujet ③ : le paiement automatique de l'abonnement
+  par Wave (3-4 h de travail, nécessite un compte Wave Business).
+
+  Pas urgent : tant que tu as peu de clients, la validation manuelle
+  via WhatsApp est même préférable (tu gardes le contact humain et
+  tu peux répondre aux questions).
+════════════════════════════════════════════════════════════════════

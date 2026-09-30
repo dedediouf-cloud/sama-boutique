@@ -139,6 +139,221 @@ export function trialEmail(data: TrialEmailData) {
   };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  EMAIL DE BIENVENUE  (envoyé à la création du compte)                     */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+export interface BienvenueEmailData {
+  shopName: string;
+  to: string;
+  trialDays: number;
+  appUrl: string;
+  supportWhatsapp?: string | null;
+  supportEmail?: string | null;
+}
+
+export function bienvenueEmail(data: BienvenueEmailData) {
+  const { shopName, trialDays, appUrl, supportWhatsapp, supportEmail } = data;
+  const contact = [
+    supportWhatsapp ? `WhatsApp : ${supportWhatsapp}` : null,
+    supportEmail ? `Email : ${supportEmail}` : null,
+  ]
+    .filter(Boolean)
+    .join(" — ");
+
+  return {
+    subject: `Bienvenue sur SamaBoutique — votre boutique « ${shopName} » est prête`,
+    html: layout(`
+      <p>Bonjour,</p>
+
+      <p>Votre boutique <strong>${shopName}</strong> est créée. Bienvenue ! 🎉</p>
+
+      <p>Vous disposez de <strong>${trialDays} jours d'essai gratuit</strong>, sans carte
+      bancaire et sans engagement. Profitez-en pour tout essayer.</p>
+
+      <p style="margin:26px 0 10px;">${button(`${appUrl}/login`, "Ouvrir ma boutique")}</p>
+      <p style="margin:0 0 22px;font-size:13px;color:#8A7A6D;">
+        Connectez-vous avec l'email et le mot de passe que vous venez de choisir.
+      </p>
+
+      <div style="background:#FDF6E3;border-radius:12px;padding:16px 18px;margin:22px 0;">
+        <p style="margin:0 0 10px;font-weight:600;color:#3D2B1F;">Par où commencer ?</p>
+        <ol style="margin:0;padding-left:20px;color:#5C4033;">
+          <li style="margin-bottom:6px;">Ajoutez vos premiers produits (menu <strong>Stock</strong>)</li>
+          <li style="margin-bottom:6px;">Enregistrez une vente pour voir comment ça marche (menu <strong>Ventes</strong>)</li>
+          <li style="margin-bottom:6px;">Partagez le lien de votre catalogue à vos clients (menu <strong>Mon catalogue</strong>)</li>
+        </ol>
+      </div>
+
+      <p style="margin:22px 0 10px;">📘 <strong>Le guide complet est en ligne</strong>, consultable depuis votre téléphone :</p>
+      <p style="margin:0 0 22px;">${button(`${appUrl}/guide`, "Lire le guide utilisateur")}</p>
+
+      <p style="font-size:14px;color:#5C4033;">
+        Il couvre tout : le stock, la caisse, les clients et la fidélité, les réservations,
+        les livraisons, les promotions, les fournisseurs, les employés, les statistiques,
+        le catalogue WhatsApp et les abonnements.
+      </p>
+
+      <div style="background:#FFF6E5;border-radius:12px;padding:14px 16px;margin:22px 0;font-size:14px;">
+        <strong>Votre essai se termine le ${new Date(
+          Date.now() + trialDays * 24 * 60 * 60 * 1000
+        ).toLocaleDateString("fr-FR")}.</strong><br />
+        Vos données restent conservées après cette date : rien n'est supprimé.
+        Nous vous préviendrons quelques jours avant.
+      </div>
+
+      ${contact ? `<p style="color:#8A7A6D;font-size:13px;">Une question ? ${contact}</p>` : ""}
+    `),
+    text:
+      `Bienvenue sur SamaBoutique ! Votre boutique « ${shopName} » est créée. ` +
+      `Vous avez ${trialDays} jours d'essai gratuit. ` +
+      `Connectez-vous : ${appUrl}/login — Guide complet : ${appUrl}/guide`,
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  EMAIL DE CONFIRMATION D'ABONNEMENT                                        */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+export interface AbonnementEmailData {
+  shopName: string;
+  to: string;
+  montant: number;
+  intervalle: "monthly" | "annual";
+  periodeFin: Date;
+  appUrl: string;
+  supportWhatsapp?: string | null;
+  supportEmail?: string | null;
+}
+
+export function abonnementEmail(data: AbonnementEmailData) {
+  const { shopName, montant, intervalle, periodeFin, appUrl, supportWhatsapp, supportEmail } = data;
+  const contact = [
+    supportWhatsapp ? `WhatsApp : ${supportWhatsapp}` : null,
+    supportEmail ? `Email : ${supportEmail}` : null,
+  ]
+    .filter(Boolean)
+    .join(" — ");
+
+  const libelle = intervalle === "annual" ? "annuel" : "mensuel";
+  const montantTexte = Math.round(montant).toLocaleString("fr-FR");
+  const finTexte = periodeFin.toLocaleDateString("fr-FR");
+
+  return {
+    subject: `Abonnement ${libelle} activé — ${shopName}`,
+    html: layout(`
+      <p>Bonjour,</p>
+
+      <p>Votre abonnement <strong>${libelle}</strong> est activé. Merci de votre confiance ! ✅</p>
+
+      <div style="background:#FDF6E3;border-radius:12px;padding:18px;margin:22px 0;">
+        <table style="width:100%;font-size:15px;color:#5C4033;border-collapse:collapse;">
+          <tr>
+            <td style="padding:6px 0;">Boutique</td>
+            <td style="padding:6px 0;text-align:right;font-weight:600;color:#3D2B1F;">${shopName}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;">Formule</td>
+            <td style="padding:6px 0;text-align:right;">Abonnement ${libelle}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;">Montant</td>
+            <td style="padding:6px 0;text-align:right;font-weight:600;color:#3D2B1F;">${montantTexte} FCFA</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;border-top:1px solid #EAD9BF;">Valable jusqu'au</td>
+            <td style="padding:6px 0;text-align:right;font-weight:600;color:#3D2B1F;border-top:1px solid #EAD9BF;">${finTexte}</td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="margin:26px 0;">${button(`${appUrl}/dashboard`, "Retourner dans ma boutique")}</p>
+
+      <p style="font-size:14px;color:#5C4033;">
+        Vous recevrez un rappel quelques jours avant l'échéance, pour éviter toute
+        interruption. Vos données sont sauvegardées automatiquement chaque nuit.
+      </p>
+
+      ${contact ? `<p style="color:#8A7A6D;font-size:13px;">Une question ? ${contact}</p>` : ""}
+    `),
+    text:
+      `Votre abonnement ${libelle} est activé. Montant : ${montantTexte} FCFA, ` +
+      `valable jusqu'au ${finTexte}. ${appUrl}/dashboard`,
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+/*  EMAIL DE RAPPEL D'ÉCHÉANCE                                                */
+/* ══════════════════════════════════════════════════════════════════════════ */
+
+export interface RappelEcheanceEmailData {
+  shopName: string;
+  to: string;
+  joursRestants: number;
+  montant: number;
+  echeance: Date;
+  appUrl: string;
+  supportWhatsapp?: string | null;
+  supportEmail?: string | null;
+}
+
+export function rappelEcheanceEmail(data: RappelEcheanceEmailData) {
+  const { shopName, joursRestants, montant, echeance, appUrl, supportWhatsapp, supportEmail } = data;
+  const contact = [
+    supportWhatsapp ? `WhatsApp : ${supportWhatsapp}` : null,
+    supportEmail ? `Email : ${supportEmail}` : null,
+  ]
+    .filter(Boolean)
+    .join(" — ");
+
+  const montantTexte = Math.round(montant).toLocaleString("fr-FR");
+  const urgence =
+    joursRestants <= 1
+      ? "Votre abonnement arrive à échéance <strong>demain</strong>."
+      : `Votre abonnement arrive à échéance dans <strong>${joursRestants} jours</strong>.`;
+
+  return {
+    subject:
+      joursRestants <= 1
+        ? `Dernier rappel — abonnement de ${shopName} demain`
+        : `Abonnement de ${shopName} : échéance dans ${joursRestants} jours`,
+    html: layout(`
+      <p>Bonjour,</p>
+
+      <p>${urgence}</p>
+
+      <div style="background:#FDF6E3;border-radius:12px;padding:18px;margin:22px 0;">
+        <table style="width:100%;font-size:15px;color:#5C4033;border-collapse:collapse;">
+          <tr>
+            <td style="padding:6px 0;">Boutique</td>
+            <td style="padding:6px 0;text-align:right;font-weight:600;color:#3D2B1F;">${shopName}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;">Échéance</td>
+            <td style="padding:6px 0;text-align:right;font-weight:600;color:#3D2B1F;">${echeance.toLocaleDateString("fr-FR")}</td>
+          </tr>
+          <tr>
+            <td style="padding:6px 0;">Montant à régler</td>
+            <td style="padding:6px 0;text-align:right;font-weight:600;color:#B87333;">${montantTexte} FCFA</td>
+          </tr>
+        </table>
+      </div>
+
+      <p style="font-size:14px;color:#5C4033;">
+        <strong>Vos données sont conservées</strong> : vos produits, vos clients et votre
+        historique de ventes ne seront jamais supprimés, même si vous décidez d'arrêter.
+      </p>
+
+      <p style="margin:26px 0;">${button(`${appUrl}/dashboard`, "Ouvrir ma boutique")}</p>
+
+      ${contact ? `<p style="color:#8A7A6D;font-size:13px;">Pour régler, contactez-nous : ${contact}</p>` : ""}
+    `),
+    text:
+      `Votre abonnement arrive à échéance le ${echeance.toLocaleDateString("fr-FR")}. ` +
+      `Montant : ${montantTexte} FCFA. Vos données sont conservées. ${appUrl}/dashboard`,
+  };
+}
+
 export function appBaseUrl() {
   const url =
     process.env.NEXT_PUBLIC_APP_URL ||

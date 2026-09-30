@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { computeAccess } from "@/lib/access";
-import { sendEmail, trialEmail, appBaseUrl } from "@/lib/email";
+import { sendEmail, trialEmail, rappelEcheanceEmail, appBaseUrl } from "@/lib/email";
 
 /**
  * ============================================================================
@@ -69,6 +69,7 @@ export async function GET(req: NextRequest) {
     failed: 0,
     dryRun,
     details: [] as { shop: string; kind: string; daysLeft: number; status: string }[],
+    renouvellements: { verifies: 0, envoyes: 0, dejaEnvoyes: 0, details: [] as any[] },
   };
 
   for (const boutique of boutiques) {
@@ -139,6 +140,86 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  console.log("[CRON trial-reminders]", JSON.stringify(result));
+  /* ══════════════════════════════════════════════════════════════════════
+   *  RAPPELS D'ÉCHÉANCE D'ABONNEMENT (boutiques déjà payantes)
+   * ══════════════════════════════════════════════════════════════════════
+   *  Envoyé 3 jours avant l'échéance, puis le jour même si non régularisé.
+   *  Le « kind » contient le mois concerné (ex. RENEW-2026-10) : ainsi un
+   *  nouveau rappel peut partir le mois suivant sans être bloqué par la
+   *  contrainte d'unicité [userId, kind].
+   */
+  const payantes = await prisma.user.findMany({
+    where: {
+      subscriptionStatus: "paid",
+      isBlocked: false,
+      subscriptionDueDate: { not: null },
+    },
+    select: {
+      id: true,
+      email: true,
+      shopName: true,
+      subscriptionAmount: true,
+      subscriptionDueDate: true,
+      trialEndsAt: true,
+      isBlocked: true,
+      subscriptionStatus: true,
+      trialReminders: { select: { kind: true } },
+    },
+  });
+
+  result.renouvellements = { verifies: payantes.length, envoyes: 0, dejaEnvoyes: 0, details: [] };
+
+  for (const b of payantes) {
+    const echeance = new Date(b.subscriptionDueDate!);
+    const joursRestants = Math.ceil((echeance.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+
+    // On n'alerte qu'à J-3 et J-0 (et si l'échéance est dépassée)
+    let suffixe: string | null = null;
+    if (joursRestants === 3) suffixe = "J3";
+    else if (joursRestants <= 0) suffixe = "J0";
+    else continue;
+
+    const kind = `RENEW-${echeance.toISOString().slice(0, 7)}-${suffixe}`;
+    if (b.trialReminders.some((r) => r.kind === kind)) {
+      result.renouvellements.dejaEnvoyes++;
+      continue;
+    }
+
+    const mail = rappelEcheanceEmail({
+      shopName: b.shopName,
+      to: b.email,
+      joursRestants: Math.max(0, joursRestants),
+      montant: b.subscriptionAmount || 0,
+      echeance,
+      appUrl,
+      supportWhatsapp: process.env.NEXT_PUBLIC_SUPPORT_WHATSAPP || null,
+      supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL || null,
+    });
+
+    if (dryRun) {
+      result.renouvellements.details.push({ shop: b.shopName, kind, statut: "dry-run" });
+      result.renouvellements.envoyes++;
+      continue;
+    }
+
+    const envoi = await sendEmail({
+      to: b.email,
+      subject: mail.subject,
+      html: mail.html,
+      text: mail.text,
+    });
+
+    if (envoi.ok) {
+      await prisma.trialReminder.create({ data: { userId: b.id, kind } });
+      result.renouvellements.envoyes++;
+      result.renouvellements.details.push({ shop: b.shopName, kind, statut: "envoyé" });
+    } else if (envoi.skipped) {
+      result.renouvellements.details.push({ shop: b.shopName, kind, statut: "ignoré (clé absente)" });
+    } else {
+      result.renouvellements.details.push({ shop: b.shopName, kind, statut: `échec: ${envoi.error}` });
+    }
+  }
+
+  console.log("[CRON rappels]", JSON.stringify(result));
   return NextResponse.json(result);
 }
