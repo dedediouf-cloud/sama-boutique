@@ -53,11 +53,33 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   /* ── Catalogues publics des boutiques ────────────────────────────────── */
+  /*  ⚠️  On n'inclut QUE les boutiques qui ont au moins un produit EN STOCK.
+   *
+   *  Pourquoi ? Le catalogue public masque les produits dont la quantité
+   *  est à 0. Une boutique sans stock affiche donc « Aucun produit trouvé ».
+   *
+   *  Or une page vide dans Google, c'est :
+   *    • un visiteur qui découvre ton application… et la croit vide
+   *    • du « contenu de faible qualité » aux yeux de Google, ce qui nuit
+   *      au référencement de TOUT le site
+   *
+   *  En filtrant ici, la page reste parfaitement accessible (on peut la
+   *  partager, le client la consulte) mais Google ne l'explore pas tant
+   *  que le commerçant n'a rien mis en vente.
+   */
   let catalogues: MetadataRoute.Sitemap = [];
   try {
     const boutiques = await prisma.user.findMany({
-      where: { isBlocked: false },
-      select: { shopSlug: true, updatedAt: true },
+      where: {
+        isBlocked: false,
+        // au moins un produit visible dans le catalogue (quantité > 0)
+        products: { some: { quantity: { gt: 0 } } },
+      },
+      select: {
+        shopSlug: true,
+        updatedAt: true,
+        _count: { select: { products: true } },
+      },
       take: 500, // au-delà, on passe à un sitemap par lots
       orderBy: { updatedAt: "desc" },
     });
@@ -68,7 +90,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         url: `${url}/catalog/${b.shopSlug}`,
         lastModified: b.updatedAt ?? maintenant,
         changeFrequency: "weekly" as const,
-        priority: 0.6,
+        // Une boutique bien remplie a un peu plus d'intérêt pour Google
+        priority: (b._count?.products ?? 0) >= 10 ? 0.7 : 0.6,
       }));
   } catch {
     // Si la base n'est pas joignable, on renvoie au moins les pages fixes :
