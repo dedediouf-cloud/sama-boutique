@@ -75,8 +75,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 p-2.5 sm:p-3 md:p-5 lg:p-8 overflow-auto relative overscroll-contain pb-20 lg:pb-8" style={{ WebkitOverflowScrolling: 'touch' }}>
+      {/* Main Content
+          ⚠️  NE JAMAIS remettre `overscroll-contain` (ni overscroll-behavior
+          en style) sur cette balise <main>.
+
+          Pourquoi ? Ce <main> a `overflow-auto` mais n'a RIEN à défiler :
+          sa hauteur s'adapte exactement à son contenu (flex-1 + min-h-0).
+          C'est donc la PAGE qui défile, pas lui.
+
+          Avec `overscroll-contain`, Chrome envoie quand même le geste à ce
+          <main> (parce qu'il a `overflow-auto`), constate qu'il ne peut pas
+          défiler, puis BLOQUE le geste au lieu de le laisser remonter à la
+          page : sur téléphone, l'écran devient impossible à faire défiler.
+
+          Firefox, lui, ignore le réglage car le conteneur n'a rien à
+          défiler — c'est pour ça que le bug ne se voyait que sur Chrome.
+
+          Mesuré le 01/10/2026 : 0 px de défilement avec, 780 px sans. */}      <main className="flex-1 p-2.5 sm:p-3 md:p-5 lg:p-8 overflow-auto relative pb-20 lg:pb-8" style={{ WebkitOverflowScrolling: 'touch' }}>
         {/* Mobile Header with Hamburger - optimized for phones */}
         <div className="lg:hidden mb-2 flex items-center justify-between sticky top-0 z-40 bg-[#FFFBF5]/95 backdrop-blur-md py-2 -mx-2 px-3 border-b border-[#D4AF37]/10">
           <button 

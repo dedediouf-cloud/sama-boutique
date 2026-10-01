@@ -1,0 +1,141 @@
+diff --git a/src/app/customers/page.tsx b/src/app/customers/page.tsx
+index f16058f..bff41d0 100644
+--- a/src/app/customers/page.tsx
++++ b/src/app/customers/page.tsx
+@@ -195,7 +195,10 @@ export default function CustomersPage() {
+ 
+         {/* Customers table */}
+         <div className="glass rounded-2xl overflow-hidden tilt-card">
+-          <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
++          {/* ⚠️  NE PAS remettre `touch-pan-x` : il interdit au navigateur de
++                faire défiler la page quand le doigt se pose sur le tableau.
++                Le glissement horizontal du tableau fonctionne sans lui. */}
++          <div className="overflow-x-auto -mx-1 px-1">
+             <table className="w-full text-xs sm:text-sm min-w-[620px]">
+               <thead className="bg-[#FDF6E3]/50 text-left">
+                 <tr>
+diff --git a/src/app/inventory/page.tsx b/src/app/inventory/page.tsx
+index 0ada90a..9055376 100644
+--- a/src/app/inventory/page.tsx
++++ b/src/app/inventory/page.tsx
+@@ -231,7 +231,10 @@ export default function InventoryPage() {
+ 
+             {/* Products count table */}
+             <div className="glass rounded-2xl overflow-hidden tilt-card">
+-              <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
++              {/* ⚠️  NE PAS remettre `touch-pan-x` : il interdit au navigateur de
++                faire défiler la page quand le doigt se pose sur le tableau.
++                Le glissement horizontal du tableau fonctionne sans lui. */}
++              <div className="overflow-x-auto -mx-1 px-1">
+                 <table className="w-full text-[11px] sm:text-sm min-w-[620px]">
+                   <thead className="bg-[#F7E7CE]/50 text-left">
+                     <tr>
+diff --git a/src/app/sales/page.tsx b/src/app/sales/page.tsx
+index ce54db1..9d7ccfa 100644
+--- a/src/app/sales/page.tsx
++++ b/src/app/sales/page.tsx
+@@ -2216,7 +2216,10 @@ export default function SalesPage() {
+ 
+             </div>
+ 
+-            <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
++            {/* ⚠️  NE PAS remettre `touch-pan-x` : il interdit au navigateur de
++                faire défiler la page quand le doigt se pose sur le tableau.
++                Le glissement horizontal du tableau fonctionne sans lui. */}
++            <div className="overflow-x-auto -mx-1 px-1">
+ 
+               <table className="w-full text-[11px] sm:text-sm min-w-[580px]">
+ 
+diff --git a/src/app/suppliers/page.tsx b/src/app/suppliers/page.tsx
+index b27c28d..e654091 100644
+--- a/src/app/suppliers/page.tsx
++++ b/src/app/suppliers/page.tsx
+@@ -383,7 +383,10 @@ export default function SuppliersPage() {
+               />
+             </div>
+           </div>
+-          <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
++          {/* ⚠️  NE PAS remettre `touch-pan-x` : il interdit au navigateur de
++                faire défiler la page quand le doigt se pose sur le tableau.
++                Le glissement horizontal du tableau fonctionne sans lui. */}
++          <div className="overflow-x-auto -mx-1 px-1">
+             <table className="w-full text-[11px] sm:text-sm min-w-[560px]">
+               <thead className="bg-[#FDF6E3]/50 text-left">
+                 <tr>
+@@ -492,7 +495,10 @@ export default function SuppliersPage() {
+               Fournisseurs
+             </h2>
+           </div>
+-          <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
++          {/* ⚠️  NE PAS remettre `touch-pan-x` : il interdit au navigateur de
++                faire défiler la page quand le doigt se pose sur le tableau.
++                Le glissement horizontal du tableau fonctionne sans lui. */}
++          <div className="overflow-x-auto -mx-1 px-1">
+             <table className="w-full text-xs sm:text-sm min-w-[520px]">
+               <thead className="bg-[#FDF6E3]/50 text-left">
+                 <tr>
+diff --git a/src/components/AppLayout.tsx b/src/components/AppLayout.tsx
+index 529cb0a..6323007 100644
+--- a/src/components/AppLayout.tsx
++++ b/src/components/AppLayout.tsx
+@@ -75,8 +75,23 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
+         </div>
+       )}
+ 
+-      {/* Main Content */}
+-      <main className="flex-1 p-2.5 sm:p-3 md:p-5 lg:p-8 overflow-auto relative overscroll-contain pb-20 lg:pb-8" style={{ WebkitOverflowScrolling: 'touch' }}>
++      {/* Main Content
++          ⚠️  NE JAMAIS remettre `overscroll-contain` (ni overscroll-behavior
++          en style) sur cette balise <main>.
++
++          Pourquoi ? Ce <main> a `overflow-auto` mais n'a RIEN à défiler :
++          sa hauteur s'adapte exactement à son contenu (flex-1 + min-h-0).
++          C'est donc la PAGE qui défile, pas lui.
++
++          Avec `overscroll-contain`, Chrome envoie quand même le geste à ce
++          <main> (parce qu'il a `overflow-auto`), constate qu'il ne peut pas
++          défiler, puis BLOQUE le geste au lieu de le laisser remonter à la
++          page : sur téléphone, l'écran devient impossible à faire défiler.
++
++          Firefox, lui, ignore le réglage car le conteneur n'a rien à
++          défiler — c'est pour ça que le bug ne se voyait que sur Chrome.
++
++          Mesuré le 01/10/2026 : 0 px de défilement avec, 780 px sans. */}      <main className="flex-1 p-2.5 sm:p-3 md:p-5 lg:p-8 overflow-auto relative pb-20 lg:pb-8" style={{ WebkitOverflowScrolling: 'touch' }}>
+         {/* Mobile Header with Hamburger - optimized for phones */}
+         <div className="lg:hidden mb-2 flex items-center justify-between sticky top-0 z-40 bg-[#FFFBF5]/95 backdrop-blur-md py-2 -mx-2 px-3 border-b border-[#D4AF37]/10">
+           <button 
+diff --git a/src/components/Sidebar.tsx b/src/components/Sidebar.tsx
+index 339e22f..22ce502 100644
+--- a/src/components/Sidebar.tsx
++++ b/src/components/Sidebar.tsx
+@@ -101,15 +101,20 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
+           <p className="text-sm text-[#C9A9A6]/80 mt-1 font-medium">{session?.user?.shopName || "Bienvenue"}</p>
+         </div>
+ 
++        {/* ⚠️  NE PAS remettre `overscroll-contain` ici non plus.
++            Même cause que dans AppLayout : ce menu a un défilement propre, et
++            quand il arrive en bas, Chrome bloque le geste au lieu de laisser
++            la page (ou la molette) continuer. Mesuré sur ordinateur : molette
++            figée n°1. Après correction : le menu défile puis la page prend le
++            relais. */}
+         <nav
+-          className="relative z-10 flex-1 min-h-0 p-3 sm:p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y scroll-smooth scrollbar-thin"
++          className="relative z-10 flex-1 min-h-0 p-3 sm:p-4 space-y-1 overflow-y-auto touch-pan-y scroll-smooth scrollbar-thin"
+           style={
+             isMobile
+               ? {
+                   // MOBILE : aucune hauteur fixe. Le parent (flex + min-h-0)
+                   // détermine la hauteur disponible, et le menu défile dedans.
+                   WebkitOverflowScrolling: "touch",
+-                  overscrollBehavior: "contain",
+                   touchAction: "pan-y",
+                   scrollbarWidth: "thin",
+                   scrollBehavior: "smooth",
+@@ -118,7 +123,6 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
+                   // BUREAU : comportement d'origine conservé
+                   maxHeight: "calc(100vh - 115px)",
+                   WebkitOverflowScrolling: "touch",
+-                  overscrollBehavior: "contain",
+                   touchAction: "pan-y",
+                   scrollbarWidth: "thin",
+                   scrollBehavior: "smooth",

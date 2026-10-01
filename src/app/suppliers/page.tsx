@@ -383,7 +383,10 @@ export default function SuppliersPage() {
               />
             </div>
           </div>
-          <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
+          {/* ⚠️  NE PAS remettre `touch-pan-x` : il interdit au navigateur de
+                faire défiler la page quand le doigt se pose sur le tableau.
+                Le glissement horizontal du tableau fonctionne sans lui. */}
+          <div className="overflow-x-auto -mx-1 px-1">
             <table className="w-full text-[11px] sm:text-sm min-w-[560px]">
               <thead className="bg-[#FDF6E3]/50 text-left">
                 <tr>
@@ -492,7 +495,10 @@ export default function SuppliersPage() {
               Fournisseurs
             </h2>
           </div>
-          <div className="overflow-x-auto -mx-1 px-1 touch-pan-x">
+          {/* ⚠️  NE PAS remettre `touch-pan-x` : il interdit au navigateur de
+                faire défiler la page quand le doigt se pose sur le tableau.
+                Le glissement horizontal du tableau fonctionne sans lui. */}
+          <div className="overflow-x-auto -mx-1 px-1">
             <table className="w-full text-xs sm:text-sm min-w-[520px]">
               <thead className="bg-[#FDF6E3]/50 text-left">
                 <tr>

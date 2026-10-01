@@ -101,15 +101,20 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
           <p className="text-sm text-[#C9A9A6]/80 mt-1 font-medium">{session?.user?.shopName || "Bienvenue"}</p>
         </div>
 
+        {/* ⚠️  NE PAS remettre `overscroll-contain` ici non plus.
+            Même cause que dans AppLayout : ce menu a un défilement propre, et
+            quand il arrive en bas, Chrome bloque le geste au lieu de laisser
+            la page (ou la molette) continuer. Mesuré sur ordinateur : molette
+            figée n°1. Après correction : le menu défile puis la page prend le
+            relais. */}
         <nav
-          className="relative z-10 flex-1 min-h-0 p-3 sm:p-4 space-y-1 overflow-y-auto overscroll-contain touch-pan-y scroll-smooth scrollbar-thin"
+          className="relative z-10 flex-1 min-h-0 p-3 sm:p-4 space-y-1 overflow-y-auto touch-pan-y scroll-smooth scrollbar-thin"
           style={
             isMobile
               ? {
                   // MOBILE : aucune hauteur fixe. Le parent (flex + min-h-0)
                   // détermine la hauteur disponible, et le menu défile dedans.
                   WebkitOverflowScrolling: "touch",
-                  overscrollBehavior: "contain",
                   touchAction: "pan-y",
                   scrollbarWidth: "thin",
                   scrollBehavior: "smooth",
@@ -118,7 +123,6 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
                   // BUREAU : comportement d'origine conservé
                   maxHeight: "calc(100vh - 115px)",
                   WebkitOverflowScrolling: "touch",
-                  overscrollBehavior: "contain",
                   touchAction: "pan-y",
                   scrollbarWidth: "thin",
                   scrollBehavior: "smooth",
