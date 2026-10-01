@@ -12,7 +12,6 @@ import {
   Clock,
   CheckCircle,
   ArrowRight,
-  Store,
   Truck,
   MessageCircle,
   FileSpreadsheet,
@@ -179,9 +178,15 @@ export default async function HomePage() {
       <header className="fixed top-0 inset-x-0 z-50 bg-[#FFFBF5]/85 backdrop-blur-md border-b border-[#D4AF37]/15">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#D4AF37] to-[#B87333] flex items-center justify-center shadow-sm">
-              <Store size={18} className="text-white" />
-            </div>
+            {/* Avant : un carré doré contenant l'icône « boutique » GÉNÉRIQUE de
+                la bibliothèque lucide-react (aucun rapport avec la marque).
+                Maintenant : le vrai emblème. */}
+            <img
+              src="/logo-embleme-192.png"
+              alt=""
+              aria-hidden="true"
+              className="w-9 h-9"
+            />
             <span className="font-[family-name:var(--font-playfair)] text-xl font-semibold">
               SamaBoutique
             </span>
@@ -479,9 +484,12 @@ export default async function HomePage() {
       <footer className="py-10 bg-[#3D2B1F] text-[#FDF6E3]/60 text-sm border-t border-white/5">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#D4AF37] to-[#B87333] flex items-center justify-center">
-              <Store size={14} className="text-white" />
-            </div>
+            <img
+              src="/logo-embleme-192.png"
+              alt=""
+              aria-hidden="true"
+              className="w-8 h-8"
+            />
             <span>© {new Date().getFullYear()} SamaBoutique</span>
           </div>
           <div className="flex items-center gap-6">

@@ -74,9 +74,17 @@ function RegisterForm() {
       <div className="relative z-10 w-full max-w-lg mx-4">
         <div className="glass-strong rounded-3xl p-8 md:p-10 shadow-2xl shadow-[#3D2B1F]/10">
           <div className="text-center mb-8">
-            <h1 className="font-[family-name:var(--font-playfair)] text-3xl font-semibold text-[#3D2B1F] mb-2">
-              SamaBoutique
-            </h1>
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <img
+                src="/logo-embleme-192.png"
+                alt=""
+                aria-hidden="true"
+                className="w-11 h-11"
+              />
+              <h1 className="font-[family-name:var(--font-playfair)] text-3xl font-semibold text-[#3D2B1F]">
+                SamaBoutique
+              </h1>
+            </div>
             <p className="text-[#5C4033] text-sm">{t("Créer mon compte boutique")}</p>
           </div>
 

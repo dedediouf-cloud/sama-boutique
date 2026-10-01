@@ -38,11 +38,19 @@ export function SuperAdminProtectedRoute({ children }: { children: React.ReactNo
       <div className="fixed bottom-0 left-0 w-[400px] h-[400px] bg-[#B87333]/10 rounded-full blur-[100px] pointer-events-none" />
 
       <header className="relative z-10 bg-gradient-to-r from-[#3D2B1F] via-[#4A3328] to-[#5C4033] text-white px-8 py-5 flex justify-between items-center border-b border-[#D4AF37]/20">
-        <div>
-          <h1 className="font-[family-name:var(--font-playfair)] text-2xl font-semibold text-[#FDF6E3]">
-            SamaBoutique - Super Admin
-          </h1>
-          <p className="text-sm text-[#D4AF37]/80 mt-0.5">{session.user?.email}</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <img
+            src="/logo-embleme-192.png"
+            alt=""
+            aria-hidden="true"
+            className="w-10 h-10 shrink-0"
+          />
+          <div className="min-w-0">
+            <h1 className="font-[family-name:var(--font-playfair)] text-2xl font-semibold text-[#FDF6E3] truncate">
+              SamaBoutique - Super Admin
+            </h1>
+            <p className="text-sm text-[#D4AF37]/80 mt-0.5 truncate">{session.user?.email}</p>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <LanguageSwitcher />

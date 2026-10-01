@@ -101,7 +101,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           >
             <Menu size={22} />
           </button>
-          <div className="text-sm font-semibold text-[#5C4033] truncate px-2">SamaBoutique</div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-[#5C4033] truncate px-2">
+            <img
+              src="/logo-embleme-192.png"
+              alt=""
+              aria-hidden="true"
+              className="w-6 h-6 shrink-0"
+            />
+            SamaBoutique
+          </div>
           <div className="w-10" /> {/* balance */}
         </div>
 

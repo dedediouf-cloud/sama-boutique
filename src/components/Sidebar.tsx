@@ -94,11 +94,25 @@ export function Sidebar({ isMobile = false, onClose }: SidebarProps) {
         <div className="absolute inset-0 opacity-30" style={{ backgroundImage: `repeating-linear-gradient(90deg, transparent, transparent 50px, rgba(247, 231, 206, 0.03) 50px, rgba(247, 231, 206, 0.03) 52px), repeating-linear-gradient(0deg, transparent, transparent 80px, rgba(247, 231, 206, 0.02) 80px, rgba(247, 231, 206, 0.02) 82px)` }} />
 
         <div className="relative z-10 p-6 border-b border-[#C9A9A6]/20 shrink-0">
-          <div className="flex items-center justify-between">
-            <h1 className="font-[family-name:var(--font-playfair)] text-2xl font-semibold text-[#F7E7CE] tracking-tight">SamaBoutique</h1>
+          {/* Ligne 1 : emblème + nom. Toute la largeur pour le nom — sinon le
+              sélecteur de langue FR/EN le tronquait en « SamaB... » (mesuré).
+              alt="" + aria-hidden : le nom est écrit juste à côté, donc l'image
+              est décorative (sinon les lecteurs d'écran le diraient 2 fois). */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img
+              src="/logo-embleme-192.png"
+              alt=""
+              aria-hidden="true"
+              className="w-8 h-8 shrink-0"
+            />
+            <h1 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#F7E7CE] tracking-tight truncate">SamaBoutique</h1>
+          </div>
+
+          {/* Ligne 2 : nom de la boutique + sélecteur de langue */}
+          <div className="flex items-center justify-between gap-2 mt-1.5">
+            <p className="text-sm text-[#C9A9A6]/80 font-medium truncate">{session?.user?.shopName || "Bienvenue"}</p>
             {!isMobile && <LanguageSwitcher />}
           </div>
-          <p className="text-sm text-[#C9A9A6]/80 mt-1 font-medium">{session?.user?.shopName || "Bienvenue"}</p>
         </div>
 
         {/* ⚠️  NE PAS remettre `overscroll-contain` ici non plus.
