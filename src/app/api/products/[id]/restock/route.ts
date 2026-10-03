@@ -20,7 +20,21 @@ export async function POST(
   const ownerId = user.ownerId || user.id;
 
   try {
-    const { quantity, note } = await request.json();
+    // ⚠️  CORRECTION D'UN BUG : le navigateur envoyait déjà « unitPrice »
+    // (le prix d'achat saisi dans la fenêtre de réapprovisionnement) et
+    // « supplierId », mais le serveur ne lisait QUE « quantity » et « note ».
+    // Résultat : le prix d'achat était silencieusement jeté. Vérifié le
+    // 03/10/2026 : 850 FCFA envoyés → « Stock mis à jour » → 850 FCFA perdus.
+    const { quantity, note, unitPrice, supplierId } = await request.json();
+
+    // Prix d'achat : on n'accepte qu'un nombre strictement positif. Une valeur
+    // vide ou nulle ne doit PAS écraser un prix déjà connu.
+    const prixAchat =
+      unitPrice === null || unitPrice === undefined || unitPrice === ""
+        ? null
+        : Number(unitPrice);
+    const prixAchatValide =
+      prixAchat !== null && Number.isFinite(prixAchat) && prixAchat > 0 ? prixAchat : null;
 
     if (!quantity || quantity <= 0) {
       return NextResponse.json({ error: "Quantité invalide" }, { status: 400 });
@@ -62,13 +76,24 @@ export async function POST(
     await prisma.$transaction(async (tx) => {
       await tx.product.update({
         where: { id },
-        data: { quantity: { increment: quantity } },
+        data: {
+          quantity: { increment: quantity },
+          // On met à jour le prix d'achat du produit SEULEMENT si le commerçant
+          // en a saisi un. Sinon on garde le prix connu : effacer une info
+          // utile parce qu'on ne l'a pas ressaisie serait une régression.
+          ...(prixAchatValide !== null ? { costPrice: prixAchatValide } : {}),
+          // Le fournisseur n'est renseigné que s'il est fourni.
+          ...(supplierId ? { supplierId } : {}),
+        },
       });
 
       await tx.stockEntry.create({
         data: {
           quantity,
           note: note || null,
+          // Historique : on garde le prix payé À CE MOMENT-LÀ. C'est ce qui
+          // permet de voir l'évolution des prix d'un fournisseur.
+          unitPrice: prixAchatValide,
           productId: id,
           userId: ownerId,
         },

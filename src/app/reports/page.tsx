@@ -17,6 +17,8 @@ import {
   Target,
   DollarSign,
   TrendingDown,
+  Coins,
+  PiggyBank,
 } from "lucide-react";
 import {
   LineChart,
@@ -160,6 +162,25 @@ export default function ReportsPage() {
                 icon={CreditCard}
                 gradient="from-[#D4AF37]/20 to-[#C5A028]/10"
               />
+              {/* ═══════════════ LE BÉNÉFICE ═══════════════
+                  C'est la vraie nouveauté de cette page. Avant, le commerçant
+                  voyait ce qu'il encaissait, jamais ce qui lui restait. */}
+              <StatCard
+                title="Bénéfice estimé"
+                value={
+                  data?.margeEstimee !== null && data?.margeEstimee !== undefined
+                    ? `${formatPrice(data.margeEstimee)} FCFA`
+                    : "—"
+                }
+                icon={PiggyBank}
+                gradient="from-green-100/70 to-[#F5E6C8]/20"
+              />
+              <StatCard
+                title="Coût des marchandises"
+                value={`${formatPrice(data?.coutTotal || 0)} FCFA`}
+                icon={Coins}
+                gradient="from-[#EBD5A3]/40 to-[#F5E6C8]/20"
+              />
               <StatCard
                 title="Nombre de ventes"
                 value={data?.totalSales || 0}
@@ -186,11 +207,72 @@ export default function ReportsPage() {
               />
             </div>
 
+            {/* ═══════════ EXPLICATION DE LA MARGE ═══════════
+                On explique d'où vient le chiffre au lieu de le livrer brut.
+                Un bénéfice calculé sur 12 % des ventes n'a pas la même valeur
+                qu'un bénéfice calculé sur 95 % : le commerçant doit le savoir. */}
+            {data && data.totalSales > 0 && (
+              <div
+                className={`glass rounded-2xl p-5 border-l-4 ${
+                  data.margeFiable
+                    ? "border-green-500/60"
+                    : "border-[#D4AF37]"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <PiggyBank
+                    size={20}
+                    className={data.margeFiable ? "text-green-600 mt-0.5" : "text-[#B87333] mt-0.5"}
+                  />
+                  <div className="flex-1 min-w-0">
+                    {data.margeFiable ? (
+                      <>
+                        <p className="font-semibold text-[#3D2B1F]">
+                          Bénéfice sur la période :{" "}
+                          <span className="text-green-700">
+                            {formatPrice(data.margeBrute)} FCFA
+                          </span>{" "}
+                          {data.tauxMarge !== null && (
+                            <span className="font-normal text-[#5C4033]/80">
+                              ({data.tauxMarge} % de marge)
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-sm text-[#5C4033]/80 mt-1">
+                          Calculé sur {Math.round(data.tauxCouverture)} % de votre chiffre
+                          d&apos;affaires (les articles dont le prix d&apos;achat est
+                          renseigné). Marge moyenne par vente :{" "}
+                          {formatPrice(data.margeMoyenneParVente)} FCFA.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-semibold text-[#3D2B1F]">
+                          Prix d&apos;achat manquants
+                        </p>
+                        <p className="text-sm text-[#5C4033]/80 mt-1">
+                          Seulement {Math.round(data.tauxCouverture)} % de votre chiffre
+                          d&apos;affaires porte sur des articles dont le prix d&apos;achat
+                          est renseigné. Le bénéfice affiché est donc une{" "}
+                          <strong>estimation</strong>, pas un chiffre exact.
+                          <br />
+                          Pour le rendre fiable : page Stock → onglet{" "}
+                          <strong>Marges</strong> → bouton{" "}
+                          <strong>« Exporter mes produits »</strong>, remplissez la
+                          colonne « Prix d&apos;achat » dans Excel, puis réimportez.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Sales chart */}
             <div className="glass rounded-2xl p-6 tilt-card">
               <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#3D2B1F] mb-5 flex items-center gap-2">
                 <span className="w-1.5 h-6 rounded-full bg-gradient-to-b from-[#D4AF37] to-[#B87333]" />
-                Évolution des ventes
+                Évolution des ventes et du bénéfice
               </h2>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
@@ -204,6 +286,9 @@ export default function ReportsPage() {
                         contentStyle={{ backgroundColor: "rgba(255, 252, 248, 0.95)", border: "1px solid rgba(212, 175, 55, 0.3)", borderRadius: "12px" }}
                       />
                       <Bar dataKey="amount" fill="#D4AF37" name="Chiffre d'affaires" radius={[6, 6, 0, 0]} />
+                      {/* La marge à côté du chiffre d'affaires : on voit tout de
+                          suite si une hausse des ventes profite vraiment. */}
+                      <Bar dataKey="marge" fill="#4CAF50" name="Bénéfice" radius={[6, 6, 0, 0]} />
                     </BarChart>
                   ) : (
                     <LineChart data={data?.dailyData || []}>
@@ -222,6 +307,15 @@ export default function ReportsPage() {
                         dot={{ fill: "#B87333", strokeWidth: 2, r: 4 }}
                         activeDot={{ r: 6, fill: "#D4AF37" }}
                         name="Chiffre d'affaires"
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="marge"
+                        stroke="#4CAF50"
+                        strokeWidth={2}
+                        strokeDasharray="6 3"
+                        dot={{ fill: "#4CAF50", r: 3 }}
+                        name="Bénéfice"
                       />
                     </LineChart>
                   )}
@@ -308,14 +402,24 @@ export default function ReportsPage() {
                       <th className="px-6 py-4 font-semibold text-[#5C4033]">Produit</th>
                       <th className="px-6 py-4 font-semibold text-[#5C4033]">Quantité vendue</th>
                       <th className="px-6 py-4 font-semibold text-[#5C4033]">Chiffre d'affaires</th>
+                      <th className="px-6 py-4 font-semibold text-[#5C4033] text-right">Bénéfice</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#D4AF37]/10">
                     {data?.topProducts?.map((p: any) => (
-                      <tr key={p.name} className="hover:bg-[#FDF6E3]/30 transition-colors duration-300">
+                      <tr key={p.id || p.name} className="hover:bg-[#FDF6E3]/30 transition-colors duration-300">
                         <td className="px-6 py-4 font-medium text-[#3D2B1F]">{p.name}</td>
                         <td className="px-6 py-4 text-[#5C4033]">{p.quantity}</td>
                         <td className="px-6 py-4 text-[#B87333] font-semibold">{formatPrice(p.revenue)} FCFA</td>
+                        <td className="px-6 py-4 text-right">
+                          {p.cout > 0 ? (
+                            <span className={p.marge >= 0 ? "font-semibold text-green-700" : "font-semibold text-red-600"}>
+                              {formatPrice(p.marge)} FCFA
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[#5C4033]/40">prix d&apos;achat inconnu</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -328,6 +432,76 @@ export default function ReportsPage() {
                 </div>
               )}
             </div>
+
+            {/* ═══════ LES PRODUITS LES PLUS RENTABLES ═══════
+                Souvent TRÈS différent du classement des plus vendus : un article
+                vendu 100 fois avec 100 FCFA de marge rapporte moins qu'un article
+                vendu 20 fois avec 1 000 FCFA. C'est ce tableau qui montre où est
+                vraiment l'argent. */}
+            {data?.topMarginProducts && data.topMarginProducts.length > 0 && (
+              <div className="glass rounded-2xl p-6 tilt-card">
+                <div className="flex items-center gap-2 mb-5">
+                  <PiggyBank size={20} className="text-green-600" />
+                  <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#3D2B1F]">
+                    Vos produits les plus rentables
+                  </h2>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[620px]">
+                    <thead className="bg-[#FDF6E3]/50 text-left">
+                      <tr>
+                        <th className="px-6 py-4 font-semibold text-[#5C4033]">Produit</th>
+                        <th className="px-6 py-4 font-semibold text-[#5C4033] text-center">
+                          Vendu
+                        </th>
+                        <th className="px-6 py-4 font-semibold text-[#5C4033] text-right">
+                          Chiffre d&apos;affaires
+                        </th>
+                        <th className="px-6 py-4 font-semibold text-[#5C4033] text-right">
+                          Coût
+                        </th>
+                        <th className="px-6 py-4 font-semibold text-[#5C4033] text-right">
+                          Bénéfice
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#D4AF37]/10">
+                      {data.topMarginProducts.map((p: any) => (
+                        <tr
+                          key={p.id || p.name}
+                          className="hover:bg-[#FDF6E3]/30 transition-colors duration-300"
+                        >
+                          <td className="px-6 py-4 font-medium text-[#3D2B1F]">{p.name}</td>
+                          <td className="px-6 py-4 text-center text-[#5C4033]">
+                            {p.quantity}
+                          </td>
+                          <td className="px-6 py-4 text-right text-[#5C4033]">
+                            {formatPrice(p.revenue)} FCFA
+                          </td>
+                          <td className="px-6 py-4 text-right text-[#5C4033]/80">
+                            {formatPrice(p.cout)} FCFA
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <span
+                              className={`font-semibold ${
+                                p.marge >= 0 ? "text-green-700" : "text-red-600"
+                              }`}
+                            >
+                              {formatPrice(p.marge)} FCFA
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="px-6 pb-4 pt-2 text-xs text-[#5C4033]/70">
+                  Calculé uniquement sur les articles dont le prix d&apos;achat est
+                  renseigné. Les articles sans prix d&apos;achat n&apos;apparaissent pas
+                  ici.
+                </p>
+              </div>
+            )}
 
             {/* === RÉPARTITION PAR MODE DE PAIEMENT === */}
             <div className="glass rounded-2xl p-6 tilt-card">

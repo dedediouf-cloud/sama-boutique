@@ -63,6 +63,7 @@ export async function GET(request?: Request) {
           id: true,
           quantity: true,
           price: true,
+          costPrice: true,
           productId: true,
           product: { select: { id: true, name: true, price: true } },
         },
@@ -93,7 +94,15 @@ export async function POST(request: Request) {
     const method = paymentMethod || "cash";
 
     let total = 0;
-    const saleItems: { productId: string; quantity: number; price: number }[] = [];
+    // On mémorise aussi le prix d'achat du produit À CET INSTANT : c'est lui
+    // qui permettra de calculer la marge réelle des ventes passées. Sans ce
+    // figement, changer un prix d'achat aujourd'hui réécrirait l'histoire.
+    const saleItems: {
+      productId: string;
+      quantity: number;
+      price: number;
+      costPrice: number | null;
+    }[] = [];
 
     for (const item of items) {
       const product = await prisma.product.findFirst({
@@ -109,6 +118,9 @@ export async function POST(request: Request) {
         productId: product.id,
         quantity: item.quantity,
         price: product.price,
+        // null si le commerçant n'a pas encore renseigné son prix d'achat :
+        // la marge de cette vente sera simplement inconnue, pas fausse.
+        costPrice: product.costPrice ?? null,
       });
     }
 

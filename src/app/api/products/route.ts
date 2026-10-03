@@ -18,6 +18,7 @@ export async function GET() {
       name: true,
       description: true,
       price: true,
+      costPrice: true,
       quantity: true,
       lowStock: true,
       category: true,
@@ -47,9 +48,19 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
+    // Prix d'achat : on nettoie la valeur pour éviter d'enregistrer 0 ou NaN
+    // (un « 0 » ferait croire à une marge de 100 %).
+    const costPrice =
+      body.costPrice === null || body.costPrice === undefined || body.costPrice === ""
+        ? null
+        : Number.isFinite(Number(body.costPrice))
+          ? Number(body.costPrice)
+          : null;
+
     const product = await prisma.product.create({
       data: {
         ...body,
+        costPrice,
         userId: user.id,
       },
     });

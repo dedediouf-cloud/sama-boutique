@@ -55,6 +55,8 @@ model StockEntry {
   id        String   @id @default(cuid())
   quantity  Int
   note      String?
+  // Prix d'achat unitaire de CETTE réception (historique des prix payés).
+  unitPrice Float?
   createdAt DateTime @default(now())
 
   productId String
@@ -89,6 +91,10 @@ model Product {
   name        String
   description String?
   price       Float
+  // Prix d'achat unitaire (ce que le commerçant paie son fournisseur).
+  // FACULTATIF : les produits existants n'en ont pas, et on ne veut pas
+  // bloquer leur modification. Sert à calculer la marge = price - costPrice.
+  costPrice   Float?
   quantity    Int      @default(0)
   lowStock    Int      @default(5)
   category    String?
@@ -234,6 +240,10 @@ model SaleItem {
   id        String  @id @default(cuid())
   quantity  Int
   price     Float
+  // Prix d'achat FIGÉ au moment de la vente. Indispensable : si on lisait le
+  // prix d'achat actuel du produit, changer un prix aujourd'hui modifierait
+  // la marge des ventes du mois dernier.
+  costPrice Float?
 
   saleId String
   sale   Sale   @relation(fields: [saleId], references: [id])

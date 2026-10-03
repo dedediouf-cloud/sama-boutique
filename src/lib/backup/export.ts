@@ -17,7 +17,10 @@ import { gzipSync, gunzipSync } from "zlib";
  * ============================================================================
  */
 
-export const VERSION_INSTANTANE = 1;
+// v2 : ajout du prix d'achat (costPrice sur les produits et les lignes de
+//      vente, unitPrice sur les mouvements de stock).
+//      Les sauvegardes v1 restent lisibles : les champs manquants valent null.
+export const VERSION_INSTANTANE = 2;
 const TAILLE_PAQUET = 500;
 
 export interface ResumeInstantane {
@@ -112,6 +115,9 @@ export async function exporterBoutique(userId: string): Promise<InstantaneBoutiq
   /* ── Données simples (petits volumes) ─────────────────────────────────── */
   const [products, customers, suppliers, promotions, employees, cashSessions] =
     await Promise.all([
+      // ⚠️  Pas de « select » ici, volontairement : on veut TOUS les champs,
+      // y compris costPrice (prix d'achat) et barcode. Un « select » explicite
+      // ferait perdre silencieusement les futurs champs ajoutés au modèle.
       prisma.product.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
       prisma.customer.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
       prisma.supplier.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),

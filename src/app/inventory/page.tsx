@@ -17,6 +17,7 @@ import {
   Save,
   X,
   Boxes,
+  Coins,
 } from "lucide-react";
 
 export default function InventoryPage() {
@@ -26,7 +27,9 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState<"count" | "history" | "valuation">("count");
+  const [activeTab, setActiveTab] = useState<"count" | "history" | "valuation" | "marge">(
+    "count"
+  );
   const [editingCounts, setEditingCounts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [message, setMessage] = useState("");
@@ -146,6 +149,7 @@ export default function InventoryPage() {
               { id: "count", label: "Comptage", icon: Boxes },
               { id: "history", label: "Historique", icon: History },
               { id: "valuation", label: "Valorisation", icon: Calculator },
+              { id: "marge", label: "Marges", icon: Coins },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -172,13 +176,32 @@ export default function InventoryPage() {
 
         {/* Valuation summary always visible */}
         {valuation && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-5 perspective-1000">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 perspective-1000">
+            {/* ⚠️  Deux chiffres différents, souvent confondus :
+                — la valeur AU PRIX DE VENTE : ce qu'on encaisserait si tout
+                  était vendu. Ce n'est PAS ce que le stock vaut.
+                — la valeur AU PRIX D'ACHAT : l'argent réellement investi.
+                  C'est le chiffre utile pour piloter une boutique. */}
             <SummaryCard
-              title="Valeur totale"
+              title="Valeur au prix d'achat"
+              value={`${formatPrice(valuation.totalCostValue || 0)} FCFA`}
+              icon={Coins}
+              gradient="from-[#D4AF37]/20 to-[#F5E6C8]/20"
+            />
+            <SummaryCard
+              title="Valeur au prix de vente"
               value={`${formatPrice(valuation.totalValue)} FCFA`}
               icon={Calculator}
               gradient="from-[#D4A5A5]/20 to-[#C9A9A6]/10"
             />
+            {valuation.produitsAvecPrixAchat > 0 && (
+              <SummaryCard
+                title="Marge si tout est vendu"
+                value={`${formatPrice(valuation.totalMargin || 0)} FCFA`}
+                icon={TrendingUp}
+                gradient="from-green-100/60 to-[#F5E6C8]/20"
+              />
+            )}
             <SummaryCard
               title="Articles en stock"
               value={valuation.totalItems}
@@ -239,6 +262,9 @@ export default function InventoryPage() {
                   <thead className="bg-[#F7E7CE]/50 text-left">
                     <tr>
                       <th className="px-6 py-4 font-semibold text-[#6B5B55]">Produit</th>
+                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">Achat</th>
+                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">Vente</th>
+                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">Marge</th>
                       <th className="px-6 py-4 font-semibold text-[#6B5B55]">Catégorie</th>
                       <th className="px-6 py-4 font-semibold text-[#6B5B55] text-center">Stock système</th>
                       <th className="px-6 py-4 font-semibold text-[#6B5B55] text-center">Stock physique</th>
@@ -257,7 +283,42 @@ export default function InventoryPage() {
                         <tr key={p.id} className="hover:bg-[#F7E7CE]/30 transition-colors duration-300">
                           <td className="px-6 py-4">
                             <div className="font-semibold text-[#4A3F3A]">{p.name}</div>
-                            <div className="text-xs text-[#6B5B55]/70">{formatPrice(p.price)} FCFA / unité</div>
+                            {p.barcode && (
+                              <div className="text-[10px] font-mono text-[#B87333]/70">
+                                {p.barcode}
+                              </div>
+                            )}
+                          </td>
+                          {/* Prix d'ACHAT : c'est la donnée qui manquait pour
+                              connaître la marge. Vide tant qu'il n'est pas saisi. */}
+                          <td className="px-6 py-4 text-right">
+                            {p.costPrice === null || p.costPrice === undefined ? (
+                              <span className="text-xs text-[#6B5B55]/40 italic">
+                                non renseigné
+                              </span>
+                            ) : (
+                              <span className="text-[#6B5B55]">
+                                {formatPrice(p.costPrice)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right font-medium text-[#4A3F3A]">
+                            {formatPrice(p.price)}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            {p.costPrice === null || p.costPrice === undefined ? (
+                              <span className="text-xs text-[#6B5B55]/40">—</span>
+                            ) : (
+                              <span
+                                className={`font-semibold ${
+                                  p.price - p.costPrice >= 0
+                                    ? "text-green-700"
+                                    : "text-red-600"
+                                }`}
+                              >
+                                {formatPrice(p.price - p.costPrice)}
+                              </span>
+                            )}
                           </td>
                           <td className="px-6 py-4 text-[#6B5B55]">{p.category || "-"}</td>
                           <td className="px-6 py-4 text-center">
@@ -407,6 +468,210 @@ export default function InventoryPage() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "marge" && (
+          <div className="space-y-6">
+            {/* Progression de la saisie : informe sans jamais bloquer.
+                On ne rend PAS le prix d'achat obligatoire, sinon les produits
+                déjà enregistrés deviendraient impossibles à modifier. */}
+            {valuation && valuation.productCount > 0 && (
+              <div className="glass rounded-2xl p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <p className="font-medium text-[#4A3F3A]">
+                      {valuation.produitsAvecPrixAchat} produit(s) sur{" "}
+                      {valuation.productCount} ont un prix d&apos;achat renseigné
+                    </p>
+                    <p className="text-sm text-[#6B5B55]/80 mt-0.5">
+                      {valuation.produitsAvecPrixAchat === valuation.productCount
+                        ? "Toutes vos marges sont calculées. Bravo !"
+                        : "Renseignez les prix d'achat manquants pour voir vos vraies marges. Le plus rapide : « Exporter mes produits », remplir la colonne dans Excel, puis réimporter."}
+                    </p>
+                  </div>
+                  {valuation.produitsAvecPrixAchat < valuation.productCount && (
+                    <div className="shrink-0 text-right">
+                      <span className="text-2xl font-bold text-[#B87333] font-[family-name:var(--font-playfair)]">
+                        {Math.round(
+                          (valuation.produitsAvecPrixAchat / valuation.productCount) * 100
+                        )}
+                        %
+                      </span>
+                      <p className="text-xs text-[#6B5B55]/70">complété</p>
+                    </div>
+                  )}
+                </div>
+                {/* Barre de progression */}
+                <div className="mt-3 h-2 rounded-full bg-[#F5E6C8]/60 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-[#D4AF37] to-[#B87333] transition-all duration-500"
+                    style={{
+                      width: `${Math.round(
+                        (valuation.produitsAvecPrixAchat / valuation.productCount) * 100
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="glass rounded-2xl overflow-hidden tilt-card">
+              <div className="px-6 pt-6 pb-2">
+                <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#4A3F3A] flex items-center gap-2">
+                  <Coins size={20} className="text-[#B87333]" />
+                  Marge par produit
+                </h2>
+                <p className="text-sm text-[#6B5B55]/80 mt-1">
+                  Le classement se fait par marge unitaire : les produits les plus
+                  rentables en premier. Souvent très différent des produits les plus vendus.
+                </p>
+              </div>
+              <div className="overflow-x-auto -mx-1 px-1">
+                <table className="w-full text-[11px] sm:text-sm min-w-[760px]">
+                  <thead className="bg-[#F7E7CE]/50 text-left">
+                    <tr>
+                      <th className="px-6 py-4 font-semibold text-[#6B5B55]">Produit</th>
+                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-center">
+                        Stock
+                      </th>
+                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">
+                        Achat
+                      </th>
+                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">
+                        Vente
+                      </th>
+                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">
+                        Marge
+                      </th>
+                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">
+                        Marge %
+                      </th>
+                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">
+                        Valeur du stock
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#C9A9A6]/10">
+                    {[...products]
+                      .sort((a, b) => {
+                        // Les produits avec prix d'achat d'abord, classés par marge
+                        // décroissante ; les autres ensuite, par ordre alphabétique.
+                        const ma = a.costPrice !== null && a.costPrice !== undefined ? a.price - a.costPrice : null;
+                        const mb = b.costPrice !== null && b.costPrice !== undefined ? b.price - b.costPrice : null;
+                        if (ma === null && mb === null) return a.name.localeCompare(b.name);
+                        if (ma === null) return 1;
+                        if (mb === null) return -1;
+                        return mb - ma;
+                      })
+                      .map((p) => {
+                        const aUnPrixAchat = p.costPrice !== null && p.costPrice !== undefined;
+                        const marge = aUnPrixAchat ? p.price - p.costPrice : null;
+                        const taux =
+                          aUnPrixAchat && p.price > 0
+                            ? Math.round((marge! / p.price) * 100)
+                            : null;
+                        return (
+                          <tr
+                            key={p.id}
+                            className="hover:bg-[#F7E7CE]/30 transition-colors duration-300"
+                          >
+                            <td className="px-6 py-4">
+                              <div className="font-semibold text-[#4A3F3A]">{p.name}</div>
+                              <div className="text-xs text-[#6B5B55]/60">
+                                {p.category || "Sans catégorie"}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-center text-[#6B5B55]">
+                              {p.quantity}
+                            </td>
+                            <td className="px-6 py-4 text-right text-[#6B5B55]">
+                              {aUnPrixAchat ? (
+                                formatPrice(p.costPrice)
+                              ) : (
+                                <span className="text-xs text-[#6B5B55]/40 italic">
+                                  à renseigner
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right font-medium text-[#4A3F3A]">
+                              {formatPrice(p.price)}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              {marge === null ? (
+                                <span className="text-[#6B5B55]/40">—</span>
+                              ) : (
+                                <span
+                                  className={`font-semibold ${
+                                    marge >= 0 ? "text-green-700" : "text-red-600"
+                                  }`}
+                                >
+                                  {formatPrice(marge)}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              {taux === null ? (
+                                <span className="text-[#6B5B55]/40">—</span>
+                              ) : (
+                                <span
+                                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                    taux >= 30
+                                      ? "bg-green-100 text-green-800"
+                                      : taux >= 15
+                                        ? "bg-[#F5E6C8] text-[#8A6D1F]"
+                                        : "bg-red-50 text-red-700"
+                                  }`}
+                                >
+                                  {taux} %
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right text-[#6B5B55]">
+                              {aUnPrixAchat ? (
+                                `${formatPrice(p.costPrice * p.quantity)} FCFA`
+                              ) : (
+                                <span className="text-[#6B5B55]/40">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                  {/* Ligne de total : l'argent réellement investi dans le stock */}
+                  {products.length > 0 && valuation && (
+                    <tfoot className="bg-[#F7E7CE]/40 font-semibold text-[#4A3F3A]">
+                      <tr>
+                        <td className="px-6 py-4" colSpan={6}>
+                          Valeur totale du stock (au prix d&apos;achat)
+                        </td>
+                        <td className="px-6 py-4 text-right text-[#B87333]">
+                          {formatPrice(valuation.totalCostValue || 0)} FCFA
+                        </td>
+                      </tr>
+                      {valuation.produitsAvecPrixAchat > 0 && (
+                        <tr>
+                          <td className="px-6 py-4" colSpan={6}>
+                            <span className="font-normal text-[#6B5B55]">
+                              Dont marge si tout est vendu au prix actuel
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right text-green-700">
+                            {formatPrice(valuation.totalMargin || 0)} FCFA
+                          </td>
+                        </tr>
+                      )}
+                    </tfoot>
+                  )}
+                </table>
+              </div>
+              {products.length === 0 && (
+                <div className="p-12 text-center text-[#6B5B55]/60">
+                  <Coins size={64} className="mx-auto mb-4 text-[#C9A9A6]/40" />
+                  <p>Aucun produit à analyser</p>
+                </div>
+              )}
             </div>
           </div>
         )}

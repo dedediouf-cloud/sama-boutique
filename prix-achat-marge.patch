@@ -1,0 +1,1716 @@
+diff --git a/prisma/schema.prisma b/prisma/schema.prisma
+index d5697f2..38bd2bf 100644
+--- a/prisma/schema.prisma
++++ b/prisma/schema.prisma
+@@ -55,6 +55,8 @@ model StockEntry {
+   id        String   @id @default(cuid())
+   quantity  Int
+   note      String?
++  // Prix d'achat unitaire de CETTE réception (historique des prix payés).
++  unitPrice Float?
+   createdAt DateTime @default(now())
+ 
+   productId String
+@@ -89,6 +91,10 @@ model Product {
+   name        String
+   description String?
+   price       Float
++  // Prix d'achat unitaire (ce que le commerçant paie son fournisseur).
++  // FACULTATIF : les produits existants n'en ont pas, et on ne veut pas
++  // bloquer leur modification. Sert à calculer la marge = price - costPrice.
++  costPrice   Float?
+   quantity    Int      @default(0)
+   lowStock    Int      @default(5)
+   category    String?
+@@ -234,6 +240,10 @@ model SaleItem {
+   id        String  @id @default(cuid())
+   quantity  Int
+   price     Float
++  // Prix d'achat FIGÉ au moment de la vente. Indispensable : si on lisait le
++  // prix d'achat actuel du produit, changer un prix aujourd'hui modifierait
++  // la marge des ventes du mois dernier.
++  costPrice Float?
+ 
+   saleId String
+   sale   Sale   @relation(fields: [saleId], references: [id])
+diff --git a/prisma/schema.prod.prisma b/prisma/schema.prod.prisma
+index af6b565..a1f7b73 100644
+--- a/prisma/schema.prod.prisma
++++ b/prisma/schema.prod.prisma
+@@ -55,6 +55,8 @@ model StockEntry {
+   id        String   @id @default(cuid())
+   quantity  Int
+   note      String?
++  // Prix d'achat unitaire de CETTE réception (historique des prix payés).
++  unitPrice Float?
+   createdAt DateTime @default(now())
+ 
+   productId String
+@@ -89,6 +91,10 @@ model Product {
+   name        String
+   description String?
+   price       Float
++  // Prix d'achat unitaire (ce que le commerçant paie son fournisseur).
++  // FACULTATIF : les produits existants n'en ont pas, et on ne veut pas
++  // bloquer leur modification. Sert à calculer la marge = price - costPrice.
++  costPrice   Float?
+   quantity    Int      @default(0)
+   lowStock    Int      @default(5)
+   category    String?
+@@ -234,6 +240,10 @@ model SaleItem {
+   id        String  @id @default(cuid())
+   quantity  Int
+   price     Float
++  // Prix d'achat FIGÉ au moment de la vente. Indispensable : si on lisait le
++  // prix d'achat actuel du produit, changer un prix aujourd'hui modifierait
++  // la marge des ventes du mois dernier.
++  costPrice Float?
+ 
+   saleId String
+   sale   Sale   @relation(fields: [saleId], references: [id])
+diff --git a/public/modele-produits.csv b/public/modele-produits.csv
+index 919f6bb..48b5e24 100644
+--- a/public/modele-produits.csv
++++ b/public/modele-produits.csv
+@@ -1,7 +1,4 @@
+-Nom du produit;Catégorie;Prix FCFA;Quantité;Seuil alerte stock;Description
+-Savon artisanal karité;Hygiène;1500;45;10;"Savon naturel 100% bio à base de beurre de karité"
+-Huile de baobab;Beauté;3500;28;5;"Huile pure pressée à froid - 100ml"
+-Pagne wax authentique;Textile;8500;12;3;"Tissu 6 yards - Motifs traditionnels"
+-Crème à la mangue;Cosmétique;2800;22;6;"Crème hydratante à l'extrait de mangue"
+-Thé de bissap;Alimentation;1200;60;15;"Infusion naturelle de fleurs d'hibiscus"
+-Bracelet en perles;Accessoires;2500;35;8;"Bracelets faits main en perles de verre"
+\ No newline at end of file
++Identifiant;Nom du produit;Catégorie;Prix de vente FCFA;Prix d'achat FCFA;Quantité;Seuil alerte stock;Description
++;Savon artisanal karité;Hygiène;1500;850;45;10;"Savon naturel 100% bio à base de beurre de karité"
++;Huile de baobab;Beauté;3500;2200;28;5;"Huile pure pressée à froid - 100ml"
++;Riz parfumé 5kg;Alimentation;5000;4200;30;5;"Riz parfumé de qualité supérieure"
+diff --git a/src/app/api/inventory/valuation/route.ts b/src/app/api/inventory/valuation/route.ts
+index cb40e82..1e8a003 100644
+--- a/src/app/api/inventory/valuation/route.ts
++++ b/src/app/api/inventory/valuation/route.ts
+@@ -10,20 +10,46 @@ export async function GET() {
+ 
+   const products = await prisma.product.findMany({
+     where: { userId: ownerId },
+-    select: { id: true, name: true, category: true, price: true, quantity: true, lowStock: true },
++    select: {
++      id: true,
++      name: true,
++      category: true,
++      price: true,
++      costPrice: true,
++      quantity: true,
++      lowStock: true,
++    },
+   });
+ 
++  // ── Les deux valorisations, à ne surtout pas confondre ──────────────────
++  //  • totalValue      : au PRIX DE VENTE. C'est ce qu'on encaisserait si tout
++  //                      était vendu. Ce n'est PAS la valeur du stock.
++  //  • totalCostValue  : au PRIX D'ACHAT. C'est l'ARGENT RÉELLEMENT INVESTI,
++  //                      l'argent qui dort sur l'étagère. C'est le chiffre
++  //                      utile pour piloter une boutique.
+   const totalValue = products.reduce((sum, p) => sum + p.price * p.quantity, 0);
++  const totalCostValue = products.reduce(
++    (sum, p) => sum + (p.costPrice ?? 0) * p.quantity,
++    0
++  );
+   const totalItems = products.reduce((sum, p) => sum + p.quantity, 0);
+   const lowStockCount = products.filter((p) => p.quantity <= p.lowStock).length;
+ 
+-  const byCategory: Record<string, { value: number; items: number; products: number }> = {};
++  // Combien de produits ont un prix d'achat renseigné ? Sert à afficher la
++  // progression de la saisie sans bloquer le commerçant.
++  const produitsAvecPrixAchat = products.filter((p) => p.costPrice !== null).length;
++
++  const byCategory: Record<
++    string,
++    { value: number; costValue: number; items: number; products: number }
++  > = {};
+   products.forEach((p) => {
+     const category = p.category || "Sans catégorie";
+     if (!byCategory[category]) {
+-      byCategory[category] = { value: 0, items: 0, products: 0 };
++      byCategory[category] = { value: 0, costValue: 0, items: 0, products: 0 };
+     }
+     byCategory[category].value += p.price * p.quantity;
++    byCategory[category].costValue += (p.costPrice ?? 0) * p.quantity;
+     byCategory[category].items += p.quantity;
+     byCategory[category].products += 1;
+   });
+@@ -35,6 +61,15 @@ export async function GET() {
+ 
+   return NextResponse.json({
+     totalValue,
++    totalCostValue,
++    // Marge potentielle : ce qu'on gagnerait si tout le stock était vendu.
++    // (Calculée uniquement sur les produits dont le prix d'achat est connu,
++    //  sinon le chiffre serait trompeur.)
++    totalMargin: products.reduce(
++      (sum, p) => (p.costPrice === null ? sum : sum + (p.price - p.costPrice) * p.quantity),
++      0
++    ),
++    produitsAvecPrixAchat,
+     totalItems,
+     lowStockCount,
+     productCount: products.length,
+diff --git a/src/app/api/products/[id]/restock/route.ts b/src/app/api/products/[id]/restock/route.ts
+index 489ccc2..0e90b80 100644
+--- a/src/app/api/products/[id]/restock/route.ts
++++ b/src/app/api/products/[id]/restock/route.ts
+@@ -20,7 +20,21 @@ export async function POST(
+   const ownerId = user.ownerId || user.id;
+ 
+   try {
+-    const { quantity, note } = await request.json();
++    // ⚠️  CORRECTION D'UN BUG : le navigateur envoyait déjà « unitPrice »
++    // (le prix d'achat saisi dans la fenêtre de réapprovisionnement) et
++    // « supplierId », mais le serveur ne lisait QUE « quantity » et « note ».
++    // Résultat : le prix d'achat était silencieusement jeté. Vérifié le
++    // 03/10/2026 : 850 FCFA envoyés → « Stock mis à jour » → 850 FCFA perdus.
++    const { quantity, note, unitPrice, supplierId } = await request.json();
++
++    // Prix d'achat : on n'accepte qu'un nombre strictement positif. Une valeur
++    // vide ou nulle ne doit PAS écraser un prix déjà connu.
++    const prixAchat =
++      unitPrice === null || unitPrice === undefined || unitPrice === ""
++        ? null
++        : Number(unitPrice);
++    const prixAchatValide =
++      prixAchat !== null && Number.isFinite(prixAchat) && prixAchat > 0 ? prixAchat : null;
+ 
+     if (!quantity || quantity <= 0) {
+       return NextResponse.json({ error: "Quantité invalide" }, { status: 400 });
+@@ -62,13 +76,24 @@ export async function POST(
+     await prisma.$transaction(async (tx) => {
+       await tx.product.update({
+         where: { id },
+-        data: { quantity: { increment: quantity } },
++        data: {
++          quantity: { increment: quantity },
++          // On met à jour le prix d'achat du produit SEULEMENT si le commerçant
++          // en a saisi un. Sinon on garde le prix connu : effacer une info
++          // utile parce qu'on ne l'a pas ressaisie serait une régression.
++          ...(prixAchatValide !== null ? { costPrice: prixAchatValide } : {}),
++          // Le fournisseur n'est renseigné que s'il est fourni.
++          ...(supplierId ? { supplierId } : {}),
++        },
+       });
+ 
+       await tx.stockEntry.create({
+         data: {
+           quantity,
+           note: note || null,
++          // Historique : on garde le prix payé À CE MOMENT-LÀ. C'est ce qui
++          // permet de voir l'évolution des prix d'un fournisseur.
++          unitPrice: prixAchatValide,
+           productId: id,
+           userId: ownerId,
+         },
+diff --git a/src/app/api/products/[id]/route.ts b/src/app/api/products/[id]/route.ts
+index 4d9414a..f896a0b 100644
+--- a/src/app/api/products/[id]/route.ts
++++ b/src/app/api/products/[id]/route.ts
+@@ -84,6 +84,13 @@ export async function PATCH(
+     if (body.name !== undefined) updateData.name = body.name;
+     if (body.description !== undefined) updateData.description = body.description;
+     if (body.price !== undefined) updateData.price = parseFloat(body.price);
++    // Prix d'achat : champ FACULTATIF. Une chaîne vide ou null doit remettre
++    // le champ à « non renseigné » (et non écrire 0, ce qui fausserait la marge).
++    if (body.costPrice !== undefined) {
++      const brut = body.costPrice;
++      updateData.costPrice =
++        brut === null || brut === "" ? null : Number.isFinite(Number(brut)) ? Number(brut) : null;
++    }
+     if (body.quantity !== undefined) updateData.quantity = parseInt(body.quantity);
+     if (body.lowStock !== undefined) updateData.lowStock = parseInt(body.lowStock);
+     if (body.category !== undefined) updateData.category = body.category;
+diff --git a/src/app/api/products/export/route.ts b/src/app/api/products/export/route.ts
+new file mode 100644
+index 0000000..da463fb
+--- /dev/null
++++ b/src/app/api/products/export/route.ts
+@@ -0,0 +1,105 @@
++import { NextResponse } from "next/server";
++import { prisma } from "@/lib/prisma";
++import { getCurrentUser } from "@/lib/session";
++
++/**
++ * ============================================================================
++ *  EXPORT DES PRODUITS EN CSV (ouvrable dans Excel)
++ * ============================================================================
++ *
++ *  À QUOI ÇA SERT
++ *  ---------------
++ *  Renseigner les prix d'achat un par un dans l'application est pénible
++ *  (≈ 4 à 5 clics par produit). Avec cet export, le commerçant :
++ *     1. télécharge son fichier
++ *     2. remplit la colonne « Prix d'achat FCFA » dans Excel
++ *     3. le réimporte
++ *
++ *  ⚠️  LA COLONNE « Identifiant » EST INDISPENSABLE
++ *  -------------------------------------------------
++ *  C'est elle qui permet à l'import de RECONNAÎTRE chaque produit et de le
++ *  METTRE À JOUR, au lieu de créer des doublons. Ne la supprime pas.
++ *
++ *  🔒 SÉCURITÉ : on n'exporte que les produits de SA propre boutique
++ *     (ownerId), jamais ceux d'une autre.
++ * ============================================================================
++ */
++
++/** Échappe une valeur pour le CSV (guillemets doublés, encadrée si besoin) */
++function cellule(valeur: unknown): string {
++  if (valeur === null || valeur === undefined) return "";
++  const texte = String(valeur);
++  if (/[";\n\r]/.test(texte)) {
++    return `"${texte.replace(/"/g, '""')}"`;
++  }
++  return texte;
++}
++
++export async function GET() {
++  const user = await getCurrentUser();
++  if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
++
++  const ownerId = user.ownerId || user.id;
++
++  const produits = await prisma.product.findMany({
++    where: { userId: ownerId },
++    select: {
++      id: true,
++      name: true,
++      category: true,
++      price: true,
++      costPrice: true,
++      quantity: true,
++      lowStock: true,
++      description: true,
++      barcode: true,
++    },
++    orderBy: [{ category: "asc" }, { name: "asc" }],
++  });
++
++  const entetes = [
++    "Identifiant",
++    "Nom du produit",
++    "Catégorie",
++    "Prix de vente FCFA",
++    "Prix d'achat FCFA",
++    "Quantité",
++    "Seuil alerte stock",
++    "Description",
++    "Code-barres",
++  ];
++
++  const lignes = produits.map((p) =>
++    [
++      p.id,
++      p.name,
++      p.category || "",
++      p.price,
++      // Vide = prix d'achat pas encore renseigné. On n'écrit surtout pas 0 :
++      // au réimport, 0 serait compris comme « produit gratuit ».
++      p.costPrice === null ? "" : p.costPrice,
++      p.quantity,
++      p.lowStock,
++      p.description || "",
++      p.barcode || "",
++    ]
++      .map(cellule)
++      .join(";")
++  );
++
++  // Le BOM (\uFEFF) est indispensable : sans lui, Excel affiche « HygiÃ¨ne »
++  // au lieu de « Hygiène » (les accents sont mal décodés).
++  const csv = "\uFEFF" + [entetes.join(";"), ...lignes].join("\r\n") + "\r\n";
++
++  const slug = (user.shopSlug || "boutique").replace(/[^a-z0-9-]/gi, "-");
++  const date = new Date().toISOString().slice(0, 10);
++
++  return new NextResponse(csv, {
++    status: 200,
++    headers: {
++      "Content-Type": "text/csv; charset=utf-8",
++      "Content-Disposition": `attachment; filename="produits-${slug}-${date}.csv"`,
++      "Cache-Control": "no-store",
++    },
++  });
++}
+diff --git a/src/app/api/products/import/route.ts b/src/app/api/products/import/route.ts
+index 4587fe3..e8693f7 100644
+--- a/src/app/api/products/import/route.ts
++++ b/src/app/api/products/import/route.ts
+@@ -3,6 +3,38 @@ import { prisma } from "@/lib/prisma";
+ import { getCurrentUser } from "@/lib/session";
+ import { assertWritable } from "@/lib/access";
+ 
++/**
++ * ============================================================================
++ *  IMPORT DE PRODUITS (fichier CSV / Excel)
++ * ============================================================================
++ *
++ *  DEUX COMPORTEMENTS, SELON LE FICHIER
++ *  -------------------------------------
++ *  1. Le fichier vient de « Exporter mes produits » (il contient la colonne
++ *     « Identifiant ») → on MET À JOUR les produits existants.
++ *     C'est ce qui permet de remplir les prix d'achat dans Excel puis de
++ *     réimporter sans créer de doublons.
++ *
++ *  2. Le fichier est un nouveau fichier (pas d'identifiant) → on CRÉE des
++ *     produits, comme avant.
++ *
++ *  ⚠️  LA QUANTITÉ N'EST JAMAIS MODIFIÉE PAR UNE MISE À JOUR.
++ *  -----------------------------------------------------------------
++ *  C'est une décision de sécurité importante. Le stock change tous les jours
++ *  (ventes, réceptions). Si on réécrivait la quantité depuis un fichier
++ *  exporté la semaine dernière, on remettrait le stock d'il y a une semaine —
++ *  et le commerçant croirait avoir du stock qu'il n'a plus.
++ *  Pour corriger un stock, il y a la page Inventaire et le réapprovisionnement.
++ * ============================================================================
++ */
++
++/** Transforme une valeur en nombre, ou null si ce n'est pas un nombre valide */
++function nombreOuNull(valeur: unknown): number | null {
++  if (valeur === null || valeur === undefined || valeur === "") return null;
++  const n = Number(String(valeur).replace(",", "."));
++  return Number.isFinite(n) ? n : null;
++}
++
+ export async function POST(request: Request) {
+   // Verrou essai/abonnement : modifie les données uniquement si la boutique
+   // n'est pas en lecture seule (essai gratuit terminé).
+@@ -13,6 +45,8 @@ export async function POST(request: Request) {
+   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+   if (user.role !== "admin") return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
+ 
++  const ownerId = user.ownerId || user.id;
++
+   try {
+     const { products } = await request.json();
+ 
+@@ -20,27 +54,71 @@ export async function POST(request: Request) {
+       return NextResponse.json({ error: "Aucun produit à importer" }, { status: 400 });
+     }
+ 
++    // On charge les identifiants réels de la boutique : sert à vérifier
++    // qu'un identifiant reçu dans le fichier lui appartient bien (sinon
++    // n'importe qui pourrait modifier les produits d'une autre boutique).
++    const siens = await prisma.product.findMany({
++      where: { userId: ownerId },
++      select: { id: true },
++    });
++    const idsAutorises = new Set(siens.map((p) => p.id));
++
+     const createdProducts = [];
++    let misAJour = 0;
+ 
+     for (const p of products) {
+-      const product = await prisma.product.create({
+-        data: {
+-          name: p.name?.trim() || "Sans nom",
+-          description: p.description || "",
+-          price: parseFloat(p.price) || 0,
+-          quantity: parseInt(p.quantity) || 0,
+-          lowStock: parseInt(p.lowStock) || 5,
+-          category: p.category || "",
+-          userId: user.id,
+-        },
+-      });
+-      createdProducts.push(product);
++      const nom = p.name?.trim() || "Sans nom";
++      const prixVente = nombreOuNull(p.price) ?? 0;
++      // Prix d'achat : FACULTATIF. Une case vide signifie « pas renseigné »
++      // et non « zéro » — sinon on afficherait une marge de 100 %.
++      const prixAchat = nombreOuNull(p.costPrice);
++
++      const identifiant = typeof p.id === "string" ? p.id : "";
++      const estMiseAJour = identifiant !== "" && idsAutorises.has(identifiant);
++
++      if (estMiseAJour) {
++        await prisma.product.update({
++          where: { id: identifiant },
++          data: {
++            name: nom,
++            description: p.description || "",
++            price: prixVente,
++            ...(prixAchat !== null ? { costPrice: prixAchat } : {}),
++            lowStock: nombreOuNull(p.lowStock) ?? 5,
++            category: p.category || "",
++            ...(p.barcode ? { barcode: String(p.barcode).trim() } : {}),
++            // ⛔ quantité volontairement NON modifiée (voir commentaire en haut)
++          },
++        });
++        misAJour += 1;
++      } else {
++        const produit = await prisma.product.create({
++          data: {
++            name: nom,
++            description: p.description || "",
++            price: prixVente,
++            costPrice: prixAchat,
++            quantity: nombreOuNull(p.quantity) ?? 0,
++            lowStock: nombreOuNull(p.lowStock) ?? 5,
++            category: p.category || "",
++            ...(p.barcode ? { barcode: String(p.barcode).trim() } : {}),
++            userId: ownerId,
++          },
++        });
++        createdProducts.push(produit);
++      }
+     }
+ 
+     return NextResponse.json({
+       success: true,
+       imported: createdProducts.length,
++      updated: misAJour,
+       products: createdProducts,
++      // Message prêt à afficher côté interface
++      message:
++        misAJour > 0
++          ? `${createdProducts.length} produit(s) créé(s), ${misAJour} mis à jour`
++          : `${createdProducts.length} produit(s) importé(s)`,
+     });
+   } catch (error) {
+     console.error("CSV Import Error:", error);
+diff --git a/src/app/api/products/route.ts b/src/app/api/products/route.ts
+index a61ed99..bd5e6f2 100644
+--- a/src/app/api/products/route.ts
++++ b/src/app/api/products/route.ts
+@@ -18,6 +18,7 @@ export async function GET() {
+       name: true,
+       description: true,
+       price: true,
++      costPrice: true,
+       quantity: true,
+       lowStock: true,
+       category: true,
+@@ -47,9 +48,19 @@ export async function POST(request: Request) {
+ 
+   try {
+     const body = await request.json();
++    // Prix d'achat : on nettoie la valeur pour éviter d'enregistrer 0 ou NaN
++    // (un « 0 » ferait croire à une marge de 100 %).
++    const costPrice =
++      body.costPrice === null || body.costPrice === undefined || body.costPrice === ""
++        ? null
++        : Number.isFinite(Number(body.costPrice))
++          ? Number(body.costPrice)
++          : null;
++
+     const product = await prisma.product.create({
+       data: {
+         ...body,
++        costPrice,
+         userId: user.id,
+       },
+     });
+diff --git a/src/app/api/reports/route.ts b/src/app/api/reports/route.ts
+index 96d378a..11c9429 100644
+--- a/src/app/api/reports/route.ts
++++ b/src/app/api/reports/route.ts
+@@ -40,53 +40,135 @@ export async function GET(request: Request) {
+   const totalRevenue = sales.reduce((sum, sale) => sum + (sale.finalTotal || sale.total), 0);
+   const totalSales = sales.length;
+ 
++  /* ══════════════════════ LE BÉNÉFICE RÉEL ══════════════════════════════
++   *
++   *  Jusqu'ici, l'application affichait le chiffre d'affaires — l'argent qui
++   *  entre — mais jamais ce qui reste. Ces lignes ajoutent le bénéfice.
++   *
++   *  ⚠️  MÉTHODE HONNÊTE, ET POURQUOI
++   *  ---------------------------------
++   *  Tous les produits n'ont pas encore de prix d'achat. Si on comptait ces
++   *  produits avec un coût de 0, la marge serait FAUSSE (elle paraîtrait
++   *  énorme). On calcule donc la marge UNIQUEMENT sur la part des ventes dont
++   *  le prix d'achat est connu, et on indique cette part au commerçant.
++   *
++   *  Exemple : 40 % du chiffre d'affaires a un prix d'achat connu → on affiche
++   *  « marge calculée sur 40 % de vos ventes ». Le commerçant sait exactement
++   *  à quoi s'en tenir, au lieu de lire un chiffre inventé.
++   */
++  let caAvecCout = 0;      // chiffre d'affaires de la part « coût connu »
++  let coutTotal = 0;       // ce que ces marchandises ont coûté
++  let articlesAvecCout = 0;
++  let articlesTotal = 0;
++
++  sales.forEach((sale) => {
++    sale.items.forEach((item) => {
++      articlesTotal += item.quantity;
++      if (item.costPrice === null || item.costPrice === undefined) return;
++      articlesAvecCout += item.quantity;
++      caAvecCout += item.price * item.quantity;
++      coutTotal += item.costPrice * item.quantity;
++    });
++  });
++
++  const margeBrute = caAvecCout - coutTotal;
++  const tauxMarge = caAvecCout > 0 ? (margeBrute / caAvecCout) * 100 : null;
++  const tauxCouverture = totalRevenue > 0 ? Math.min(100, (caAvecCout / totalRevenue) * 100) : 0;
++  // Le chiffre est-il exploitable ? En dessous de 50 % de couverture, on
++  // prévient le commerçant au lieu de lui présenter un chiffre trompeur.
++  const margeFiable = tauxCouverture >= 50;
++
++  // Estimation du bénéfice sur la TOTALITÉ des ventes, en supposant que la part
++  // non renseignée a le même taux de marge que celle qui est connue.
++  // C'est une projection : elle n'est affichée que comme estimation.
++  const margeEstimee =
++    tauxMarge !== null && tauxCouverture > 0 ? totalRevenue * (tauxMarge / 100) : null;
++
+   // Ventes par jour
+-  const salesByDay: Record<string, { date: string; amount: number; count: number }> = {};
++  const salesByDay: Record<
++    string,
++    { date: string; amount: number; count: number; marge: number }
++  > = {};
+   sales.forEach((sale) => {
+     const dateKey = sale.createdAt.toISOString().split("T")[0];
+     if (!salesByDay[dateKey]) {
+-      salesByDay[dateKey] = { date: dateKey, amount: 0, count: 0 };
++      salesByDay[dateKey] = { date: dateKey, amount: 0, count: 0, marge: 0 };
+     }
+     salesByDay[dateKey].amount += (sale.finalTotal || sale.total);
+     salesByDay[dateKey].count += 1;
++    // Marge du jour, calculée sur les articles dont le prix d'achat est connu
++    sale.items.forEach((item) => {
++      if (item.costPrice === null || item.costPrice === undefined) return;
++      salesByDay[dateKey].marge += (item.price - item.costPrice) * item.quantity;
++    });
+   });
+ 
+   // Remplir les jours manquants
+-  const dailyData: { date: string; amount: number; count: number }[] = [];
++  const dailyData: { date: string; amount: number; count: number; marge: number }[] = [];
+   for (let i = daysInPeriod - 1; i >= 0; i--) {
+     const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+     const dateKey = d.toISOString().split("T")[0];
+-    dailyData.push(salesByDay[dateKey] || { date: dateKey, amount: 0, count: 0 });
++    dailyData.push(salesByDay[dateKey] || { date: dateKey, amount: 0, count: 0, marge: 0 });
+   }
+ 
+   // Ventes par mois (12m)
+-  const salesByMonth: Record<string, { month: string; amount: number; count: number }> = {};
++  const salesByMonth: Record<
++    string,
++    { month: string; amount: number; count: number; marge: number }
++  > = {};
+   sales.forEach((sale) => {
+     const monthKey = `${sale.createdAt.getFullYear()}-${String(sale.createdAt.getMonth() + 1).padStart(2, "0")}`;
+     if (!salesByMonth[monthKey]) {
+-      salesByMonth[monthKey] = { month: monthKey, amount: 0, count: 0 };
++      salesByMonth[monthKey] = { month: monthKey, amount: 0, count: 0, marge: 0 };
+     }
+     salesByMonth[monthKey].amount += (sale.finalTotal || sale.total);
+     salesByMonth[monthKey].count += 1;
++    sale.items.forEach((item) => {
++      if (item.costPrice === null || item.costPrice === undefined) return;
++      salesByMonth[monthKey].marge += (item.price - item.costPrice) * item.quantity;
++    });
+   });
+   const monthlyData = Object.values(salesByMonth).sort((a, b) => a.month.localeCompare(b.month));
+ 
+   // Top produits
+-  const productMap: Record<string, { name: string; quantity: number; revenue: number }> = {};
++  const productMap: Record<
++    string,
++    { id: string; name: string; quantity: number; revenue: number; marge: number; cout: number }
++  > = {};
+   sales.forEach((sale) => {
+     sale.items.forEach((item) => {
+       const key = item.productId;
+       if (!productMap[key]) {
+-        productMap[key] = { name: item.product.name, quantity: 0, revenue: 0 };
++        productMap[key] = {
++          id: item.productId,
++          name: item.product.name,
++          quantity: 0,
++          revenue: 0,
++          marge: 0,
++          cout: 0,
++        };
+       }
+       productMap[key].quantity += item.quantity;
+       productMap[key].revenue += item.price * item.quantity;
++      if (item.costPrice !== null && item.costPrice !== undefined) {
++        productMap[key].marge += (item.price - item.costPrice) * item.quantity;
++        productMap[key].cout += item.costPrice * item.quantity;
++      }
+     });
+   });
+   const topProducts = Object.values(productMap)
+     .sort((a, b) => b.quantity - a.quantity)
+     .slice(0, 10);
+ 
++  /* ⚠️  LES PLUS RENTABLES NE SONT PAS LES PLUS VENDUS.
++   *  Un produit vendu 100 fois avec 100 FCFA de marge rapporte moins qu'un
++   *  produit vendu 20 fois avec 1 000 FCFA de marge. C'est ce classement-ci
++   *  qui dit où est vraiment l'argent. */
++  const topMarginProducts = Object.values(productMap)
++    .filter((p) => p.marge !== 0)
++    .sort((a, b) => b.marge - a.marge)
++    .slice(0, 10);
++
+   // Statuts paiement
+   const paymentStatus = {
+     paid: sales.filter((s) => s.paymentStatus === "paid" || s.paymentMethod === "cash" || s.paymentMethod === "qr_merchant" || s.paymentMethod === "cash_on_delivery").length,
+@@ -190,10 +272,22 @@ export async function GET(request: Request) {
+   return NextResponse.json({
+     totalRevenue,
+     totalSales,
++    // ── Le bénéfice ──────────────────────────────────────────────────
++    coutTotal,
++    margeBrute,
++    tauxMarge: tauxMarge === null ? null : Math.round(tauxMarge * 10) / 10,
++    tauxCouverture: Math.round(tauxCouverture * 10) / 10,
++    margeFiable,
++    margeEstimee: margeEstimee === null ? null : Math.round(margeEstimee),
++    articlesAvecCout,
++    articlesTotal,
+     avgDailySales: Math.round(avgDailySales * 100) / 100,
++    // Bénéfice moyen par vente : souvent l'indicateur le plus parlant
++    margeMoyenneParVente: totalSales > 0 ? Math.round(margeBrute / totalSales) : 0,
+     dailyData,
+     monthlyData,
+     topProducts,
++    topMarginProducts,
+     paymentStatus,
+     paymentMethods,
+     cashStats,
+diff --git a/src/app/api/sales/route.ts b/src/app/api/sales/route.ts
+index 1e71e37..2b56395 100644
+--- a/src/app/api/sales/route.ts
++++ b/src/app/api/sales/route.ts
+@@ -63,6 +63,7 @@ export async function GET(request?: Request) {
+           id: true,
+           quantity: true,
+           price: true,
++          costPrice: true,
+           productId: true,
+           product: { select: { id: true, name: true, price: true } },
+         },
+@@ -93,7 +94,15 @@ export async function POST(request: Request) {
+     const method = paymentMethod || "cash";
+ 
+     let total = 0;
+-    const saleItems: { productId: string; quantity: number; price: number }[] = [];
++    // On mémorise aussi le prix d'achat du produit À CET INSTANT : c'est lui
++    // qui permettra de calculer la marge réelle des ventes passées. Sans ce
++    // figement, changer un prix d'achat aujourd'hui réécrirait l'histoire.
++    const saleItems: {
++      productId: string;
++      quantity: number;
++      price: number;
++      costPrice: number | null;
++    }[] = [];
+ 
+     for (const item of items) {
+       const product = await prisma.product.findFirst({
+@@ -109,6 +118,9 @@ export async function POST(request: Request) {
+         productId: product.id,
+         quantity: item.quantity,
+         price: product.price,
++        // null si le commerçant n'a pas encore renseigné son prix d'achat :
++        // la marge de cette vente sera simplement inconnue, pas fausse.
++        costPrice: product.costPrice ?? null,
+       });
+     }
+ 
+diff --git a/src/app/inventory/page.tsx b/src/app/inventory/page.tsx
+index 9055376..ed1ec33 100644
+--- a/src/app/inventory/page.tsx
++++ b/src/app/inventory/page.tsx
+@@ -17,6 +17,7 @@ import {
+   Save,
+   X,
+   Boxes,
++  Coins,
+ } from "lucide-react";
+ 
+ export default function InventoryPage() {
+@@ -26,7 +27,9 @@ export default function InventoryPage() {
+   const [loading, setLoading] = useState(true);
+   const [searchTerm, setSearchTerm] = useState("");
+   const [categoryFilter, setCategoryFilter] = useState("all");
+-  const [activeTab, setActiveTab] = useState<"count" | "history" | "valuation">("count");
++  const [activeTab, setActiveTab] = useState<"count" | "history" | "valuation" | "marge">(
++    "count"
++  );
+   const [editingCounts, setEditingCounts] = useState<Record<string, string>>({});
+   const [saving, setSaving] = useState<Record<string, boolean>>({});
+   const [message, setMessage] = useState("");
+@@ -146,6 +149,7 @@ export default function InventoryPage() {
+               { id: "count", label: "Comptage", icon: Boxes },
+               { id: "history", label: "Historique", icon: History },
+               { id: "valuation", label: "Valorisation", icon: Calculator },
++              { id: "marge", label: "Marges", icon: Coins },
+             ].map((tab) => (
+               <button
+                 key={tab.id}
+@@ -172,13 +176,32 @@ export default function InventoryPage() {
+ 
+         {/* Valuation summary always visible */}
+         {valuation && (
+-          <div className="grid grid-cols-1 md:grid-cols-4 gap-5 perspective-1000">
++          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 perspective-1000">
++            {/* ⚠️  Deux chiffres différents, souvent confondus :
++                — la valeur AU PRIX DE VENTE : ce qu'on encaisserait si tout
++                  était vendu. Ce n'est PAS ce que le stock vaut.
++                — la valeur AU PRIX D'ACHAT : l'argent réellement investi.
++                  C'est le chiffre utile pour piloter une boutique. */}
++            <SummaryCard
++              title="Valeur au prix d'achat"
++              value={`${formatPrice(valuation.totalCostValue || 0)} FCFA`}
++              icon={Coins}
++              gradient="from-[#D4AF37]/20 to-[#F5E6C8]/20"
++            />
+             <SummaryCard
+-              title="Valeur totale"
++              title="Valeur au prix de vente"
+               value={`${formatPrice(valuation.totalValue)} FCFA`}
+               icon={Calculator}
+               gradient="from-[#D4A5A5]/20 to-[#C9A9A6]/10"
+             />
++            {valuation.produitsAvecPrixAchat > 0 && (
++              <SummaryCard
++                title="Marge si tout est vendu"
++                value={`${formatPrice(valuation.totalMargin || 0)} FCFA`}
++                icon={TrendingUp}
++                gradient="from-green-100/60 to-[#F5E6C8]/20"
++              />
++            )}
+             <SummaryCard
+               title="Articles en stock"
+               value={valuation.totalItems}
+@@ -239,6 +262,9 @@ export default function InventoryPage() {
+                   <thead className="bg-[#F7E7CE]/50 text-left">
+                     <tr>
+                       <th className="px-6 py-4 font-semibold text-[#6B5B55]">Produit</th>
++                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">Achat</th>
++                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">Vente</th>
++                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">Marge</th>
+                       <th className="px-6 py-4 font-semibold text-[#6B5B55]">Catégorie</th>
+                       <th className="px-6 py-4 font-semibold text-[#6B5B55] text-center">Stock système</th>
+                       <th className="px-6 py-4 font-semibold text-[#6B5B55] text-center">Stock physique</th>
+@@ -257,7 +283,42 @@ export default function InventoryPage() {
+                         <tr key={p.id} className="hover:bg-[#F7E7CE]/30 transition-colors duration-300">
+                           <td className="px-6 py-4">
+                             <div className="font-semibold text-[#4A3F3A]">{p.name}</div>
+-                            <div className="text-xs text-[#6B5B55]/70">{formatPrice(p.price)} FCFA / unité</div>
++                            {p.barcode && (
++                              <div className="text-[10px] font-mono text-[#B87333]/70">
++                                {p.barcode}
++                              </div>
++                            )}
++                          </td>
++                          {/* Prix d'ACHAT : c'est la donnée qui manquait pour
++                              connaître la marge. Vide tant qu'il n'est pas saisi. */}
++                          <td className="px-6 py-4 text-right">
++                            {p.costPrice === null || p.costPrice === undefined ? (
++                              <span className="text-xs text-[#6B5B55]/40 italic">
++                                non renseigné
++                              </span>
++                            ) : (
++                              <span className="text-[#6B5B55]">
++                                {formatPrice(p.costPrice)}
++                              </span>
++                            )}
++                          </td>
++                          <td className="px-6 py-4 text-right font-medium text-[#4A3F3A]">
++                            {formatPrice(p.price)}
++                          </td>
++                          <td className="px-6 py-4 text-right">
++                            {p.costPrice === null || p.costPrice === undefined ? (
++                              <span className="text-xs text-[#6B5B55]/40">—</span>
++                            ) : (
++                              <span
++                                className={`font-semibold ${
++                                  p.price - p.costPrice >= 0
++                                    ? "text-green-700"
++                                    : "text-red-600"
++                                }`}
++                              >
++                                {formatPrice(p.price - p.costPrice)}
++                              </span>
++                            )}
+                           </td>
+                           <td className="px-6 py-4 text-[#6B5B55]">{p.category || "-"}</td>
+                           <td className="px-6 py-4 text-center">
+@@ -410,6 +471,210 @@ export default function InventoryPage() {
+             </div>
+           </div>
+         )}
++
++        {activeTab === "marge" && (
++          <div className="space-y-6">
++            {/* Progression de la saisie : informe sans jamais bloquer.
++                On ne rend PAS le prix d'achat obligatoire, sinon les produits
++                déjà enregistrés deviendraient impossibles à modifier. */}
++            {valuation && valuation.productCount > 0 && (
++              <div className="glass rounded-2xl p-5">
++                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
++                  <div>
++                    <p className="font-medium text-[#4A3F3A]">
++                      {valuation.produitsAvecPrixAchat} produit(s) sur{" "}
++                      {valuation.productCount} ont un prix d&apos;achat renseigné
++                    </p>
++                    <p className="text-sm text-[#6B5B55]/80 mt-0.5">
++                      {valuation.produitsAvecPrixAchat === valuation.productCount
++                        ? "Toutes vos marges sont calculées. Bravo !"
++                        : "Renseignez les prix d'achat manquants pour voir vos vraies marges. Le plus rapide : « Exporter mes produits », remplir la colonne dans Excel, puis réimporter."}
++                    </p>
++                  </div>
++                  {valuation.produitsAvecPrixAchat < valuation.productCount && (
++                    <div className="shrink-0 text-right">
++                      <span className="text-2xl font-bold text-[#B87333] font-[family-name:var(--font-playfair)]">
++                        {Math.round(
++                          (valuation.produitsAvecPrixAchat / valuation.productCount) * 100
++                        )}
++                        %
++                      </span>
++                      <p className="text-xs text-[#6B5B55]/70">complété</p>
++                    </div>
++                  )}
++                </div>
++                {/* Barre de progression */}
++                <div className="mt-3 h-2 rounded-full bg-[#F5E6C8]/60 overflow-hidden">
++                  <div
++                    className="h-full rounded-full bg-gradient-to-r from-[#D4AF37] to-[#B87333] transition-all duration-500"
++                    style={{
++                      width: `${Math.round(
++                        (valuation.produitsAvecPrixAchat / valuation.productCount) * 100
++                      )}%`,
++                    }}
++                  />
++                </div>
++              </div>
++            )}
++
++            <div className="glass rounded-2xl overflow-hidden tilt-card">
++              <div className="px-6 pt-6 pb-2">
++                <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#4A3F3A] flex items-center gap-2">
++                  <Coins size={20} className="text-[#B87333]" />
++                  Marge par produit
++                </h2>
++                <p className="text-sm text-[#6B5B55]/80 mt-1">
++                  Le classement se fait par marge unitaire : les produits les plus
++                  rentables en premier. Souvent très différent des produits les plus vendus.
++                </p>
++              </div>
++              <div className="overflow-x-auto -mx-1 px-1">
++                <table className="w-full text-[11px] sm:text-sm min-w-[760px]">
++                  <thead className="bg-[#F7E7CE]/50 text-left">
++                    <tr>
++                      <th className="px-6 py-4 font-semibold text-[#6B5B55]">Produit</th>
++                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-center">
++                        Stock
++                      </th>
++                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">
++                        Achat
++                      </th>
++                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">
++                        Vente
++                      </th>
++                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">
++                        Marge
++                      </th>
++                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">
++                        Marge %
++                      </th>
++                      <th className="px-6 py-4 font-semibold text-[#6B5B55] text-right">
++                        Valeur du stock
++                      </th>
++                    </tr>
++                  </thead>
++                  <tbody className="divide-y divide-[#C9A9A6]/10">
++                    {[...products]
++                      .sort((a, b) => {
++                        // Les produits avec prix d'achat d'abord, classés par marge
++                        // décroissante ; les autres ensuite, par ordre alphabétique.
++                        const ma = a.costPrice !== null && a.costPrice !== undefined ? a.price - a.costPrice : null;
++                        const mb = b.costPrice !== null && b.costPrice !== undefined ? b.price - b.costPrice : null;
++                        if (ma === null && mb === null) return a.name.localeCompare(b.name);
++                        if (ma === null) return 1;
++                        if (mb === null) return -1;
++                        return mb - ma;
++                      })
++                      .map((p) => {
++                        const aUnPrixAchat = p.costPrice !== null && p.costPrice !== undefined;
++                        const marge = aUnPrixAchat ? p.price - p.costPrice : null;
++                        const taux =
++                          aUnPrixAchat && p.price > 0
++                            ? Math.round((marge! / p.price) * 100)
++                            : null;
++                        return (
++                          <tr
++                            key={p.id}
++                            className="hover:bg-[#F7E7CE]/30 transition-colors duration-300"
++                          >
++                            <td className="px-6 py-4">
++                              <div className="font-semibold text-[#4A3F3A]">{p.name}</div>
++                              <div className="text-xs text-[#6B5B55]/60">
++                                {p.category || "Sans catégorie"}
++                              </div>
++                            </td>
++                            <td className="px-6 py-4 text-center text-[#6B5B55]">
++                              {p.quantity}
++                            </td>
++                            <td className="px-6 py-4 text-right text-[#6B5B55]">
++                              {aUnPrixAchat ? (
++                                formatPrice(p.costPrice)
++                              ) : (
++                                <span className="text-xs text-[#6B5B55]/40 italic">
++                                  à renseigner
++                                </span>
++                              )}
++                            </td>
++                            <td className="px-6 py-4 text-right font-medium text-[#4A3F3A]">
++                              {formatPrice(p.price)}
++                            </td>
++                            <td className="px-6 py-4 text-right">
++                              {marge === null ? (
++                                <span className="text-[#6B5B55]/40">—</span>
++                              ) : (
++                                <span
++                                  className={`font-semibold ${
++                                    marge >= 0 ? "text-green-700" : "text-red-600"
++                                  }`}
++                                >
++                                  {formatPrice(marge)}
++                                </span>
++                              )}
++                            </td>
++                            <td className="px-6 py-4 text-right">
++                              {taux === null ? (
++                                <span className="text-[#6B5B55]/40">—</span>
++                              ) : (
++                                <span
++                                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
++                                    taux >= 30
++                                      ? "bg-green-100 text-green-800"
++                                      : taux >= 15
++                                        ? "bg-[#F5E6C8] text-[#8A6D1F]"
++                                        : "bg-red-50 text-red-700"
++                                  }`}
++                                >
++                                  {taux} %
++                                </span>
++                              )}
++                            </td>
++                            <td className="px-6 py-4 text-right text-[#6B5B55]">
++                              {aUnPrixAchat ? (
++                                `${formatPrice(p.costPrice * p.quantity)} FCFA`
++                              ) : (
++                                <span className="text-[#6B5B55]/40">—</span>
++                              )}
++                            </td>
++                          </tr>
++                        );
++                      })}
++                  </tbody>
++                  {/* Ligne de total : l'argent réellement investi dans le stock */}
++                  {products.length > 0 && valuation && (
++                    <tfoot className="bg-[#F7E7CE]/40 font-semibold text-[#4A3F3A]">
++                      <tr>
++                        <td className="px-6 py-4" colSpan={6}>
++                          Valeur totale du stock (au prix d&apos;achat)
++                        </td>
++                        <td className="px-6 py-4 text-right text-[#B87333]">
++                          {formatPrice(valuation.totalCostValue || 0)} FCFA
++                        </td>
++                      </tr>
++                      {valuation.produitsAvecPrixAchat > 0 && (
++                        <tr>
++                          <td className="px-6 py-4" colSpan={6}>
++                            <span className="font-normal text-[#6B5B55]">
++                              Dont marge si tout est vendu au prix actuel
++                            </span>
++                          </td>
++                          <td className="px-6 py-4 text-right text-green-700">
++                            {formatPrice(valuation.totalMargin || 0)} FCFA
++                          </td>
++                        </tr>
++                      )}
++                    </tfoot>
++                  )}
++                </table>
++              </div>
++              {products.length === 0 && (
++                <div className="p-12 text-center text-[#6B5B55]/60">
++                  <Coins size={64} className="mx-auto mb-4 text-[#C9A9A6]/40" />
++                  <p>Aucun produit à analyser</p>
++                </div>
++              )}
++            </div>
++          </div>
++        )}
+       </div>
+     </ProtectedRoute>
+   );
+diff --git a/src/app/products/page.tsx b/src/app/products/page.tsx
+index a0297d2..6ce01e0 100644
+--- a/src/app/products/page.tsx
++++ b/src/app/products/page.tsx
+@@ -26,11 +26,12 @@ export default function ProductsPage() {
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState<string | null>(null);
+   const [importing, setImporting] = useState(false);
++  const [exporting, setExporting] = useState(false);
+   const [deletingAll, setDeletingAll] = useState(false);
+   const [searchTerm, setSearchTerm] = useState("");
+ 
+   const [form, setForm] = useState({
+-    name: "", description: "", price: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "", barcode: "",
++    name: "", description: "", price: "", costPrice: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "", barcode: "",
+   });
+ 
+   const [restockForm, setRestockForm] = useState({
+@@ -39,7 +40,7 @@ export default function ProductsPage() {
+ 
+   const [editingProduct, setEditingProduct] = useState<any>(null);
+   const [editForm, setEditForm] = useState({
+-    name: "", description: "", price: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "", barcode: "",
++    name: "", description: "", price: "", costPrice: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "", barcode: "",
+   });
+   const [savingEdit, setSavingEdit] = useState(false);
+   const [restocking, setRestocking] = useState(false);
+@@ -87,6 +88,10 @@ export default function ProductsPage() {
+       name: product.name || "",
+       description: product.description || "",
+       price: product.price?.toString() || "",
++      costPrice:
++        product.costPrice !== null && product.costPrice !== undefined
++          ? product.costPrice.toString()
++          : "",
+       quantity: product.quantity?.toString() || "",
+       lowStock: (product.lowStock || 5).toString(),
+       category: product.category || "",
+@@ -98,7 +103,7 @@ export default function ProductsPage() {
+ 
+   const closeEdit = () => {
+     setEditingProduct(null);
+-    setEditForm({ name: "", description: "", price: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "", barcode: "" });
++    setEditForm({ name: "", description: "", price: "", costPrice: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "", barcode: "" });
+   };
+ 
+   const handleEditSubmit = async (e: React.FormEvent) => {
+@@ -123,6 +128,12 @@ export default function ProductsPage() {
+           name: editForm.name,
+           description: editForm.description,
+           price: parseFloat(editForm.price),
++          // On envoie TOUJOURS costPrice en modification (même null), pour que
++          // vider le champ permette réellement d'effacer un prix d'achat erroné.
++          costPrice:
++            editForm.costPrice === "" || parseFloat(editForm.costPrice) <= 0
++              ? null
++              : parseFloat(editForm.costPrice),
+           quantity: parseInt(editForm.quantity) || 0,
+           lowStock: parseInt(editForm.lowStock) || 5,
+           category: editForm.category,
+@@ -166,6 +177,12 @@ export default function ProductsPage() {
+         body: JSON.stringify({
+           ...form,
+           price: parseFloat(form.price) || 0,
++          // null (et non 0) quand le champ est vide : « pas renseigné ».
++          // Un 0 ferait croire à une marge de 100 % sur ce produit.
++          costPrice:
++            form.costPrice === "" || parseFloat(form.costPrice) <= 0
++              ? null
++              : parseFloat(form.costPrice),
+           quantity: parseInt(form.quantity) || 0,
+           lowStock: parseInt(form.lowStock) || 5,
+           imageUrl: form.imageUrl || null,
+@@ -175,7 +192,7 @@ export default function ProductsPage() {
+       });
+ 
+       if (res.ok) {
+-        setForm({ name: "", description: "", price: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "", barcode: "" });
++        setForm({ name: "", description: "", price: "", costPrice: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "", barcode: "" });
+         setShowForm(false);
+         await fetchProducts();
+         alert("Produit enregistré avec succès !");
+@@ -245,8 +262,14 @@ export default function ProductsPage() {
+       productName: product.name,
+       quantity: "",
+       note: "",
+-      supplierId: "",
+-      unitPrice: "",
++      supplierId: product.supplierId || "",
++      // ⚡ Le dernier prix d'achat connu est pré-rempli : dans la vraie vie, on
++      // rachète souvent au même prix. Le commerçant n'a qu'à corriger si le
++      // fournisseur a augmenté. S'il n'y a pas encore de prix, le champ est vide.
++      unitPrice:
++        product.costPrice !== null && product.costPrice !== undefined
++          ? String(product.costPrice)
++          : "",
+     });
+   };
+ 
+@@ -278,6 +301,46 @@ export default function ProductsPage() {
+     }
+   };
+ 
++  /**
++   * Découpe une ligne CSV en respectant les guillemets.
++   *
++   * ⚠️  POURQUOI CE N'EST PAS JUSTE « ligne.split(";") » :
++   * une description comme « Savon 100% bio ; sans parfum » contient elle-même
++   * des points-virgules. L'export la protège en l'entourant de guillemets, mais
++   * un simple split la découperait en morceaux → colonnes décalées, et un prix
++   * attribué au mauvais produit. Cette fonction gère les guillemets et les
++   * guillemets doublés (« "" » représente un guillemet réel).
++   */
++  const decouperLigneCSV = (ligne: string, delimiteur: string): string[] => {
++    const valeurs: string[] = [];
++    let courant = "";
++    let entreGuillemets = false;
++    for (let i = 0; i < ligne.length; i++) {
++      const c = ligne[i];
++      if (entreGuillemets) {
++        if (c === '"') {
++          if (ligne[i + 1] === '"') {
++            courant += '"';
++            i++;
++          } else {
++            entreGuillemets = false;
++          }
++        } else {
++          courant += c;
++        }
++      } else if (c === '"') {
++        entreGuillemets = true;
++      } else if (c === delimiteur) {
++        valeurs.push(courant);
++        courant = "";
++      } else {
++        courant += c;
++      }
++    }
++    valeurs.push(courant);
++    return valeurs.map((v) => v.trim());
++  };
++
+   const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+     const file = e.target.files?.[0];
+     if (!file) return;
+@@ -295,10 +358,19 @@ export default function ProductsPage() {
+         }
+ 
+         const delimiter = lines[0].includes(";") ? ";" : ",";
+-        const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/"/g, ""));
+-
+-        const findIndex = (possible: string[]) => {
++        const headers = decouperLigneCSV(lines[0], delimiter).map((h) =>
++          h.toLowerCase().replace(/"/g, "")
++        );
++
++        /**
++         * Cherche la position d'une colonne.
++         * ⚠️  « excludes » est indispensable : sans lui, chercher « prix »
++         * trouverait aussi « Prix d'achat FCFA » (premier arrivé, premier
++         * servi), et le prix d'achat serait enregistré comme prix de vente.
++         */
++        const findIndex = (possible: string[], excludes: string[] = []) => {
+           for (let i = 0; i < headers.length; i++) {
++            if (excludes.some((e) => headers[i].includes(e))) continue;
+             if (possible.some((p) => headers[i].includes(p))) return i;
+           }
+           return -1;
+@@ -311,19 +383,49 @@ export default function ProductsPage() {
+           return;
+         }
+ 
++        // Colonnes reconnues dans le fichier
++        const idIdx = findIndex(["identifiant", "id produit"]);
++        const prixVenteIdx = findIndex(["prix de vente", "prix vente", "prix"], ["achat"]);
++        const prixAchatIdx = findIndex([
++          "prix d'achat",
++          "prix achat",
++          "achat",
++          "cout",
++          "coût",
++          "cost",
++        ]);
++        const quantiteIdx = findIndex(["quantite", "quantité", "stock"]);
++        const seuilIdx = findIndex(["seuil", "alerte"]);
++        const descriptionIdx = findIndex(["description"]);
++        const codeBarresIdx = findIndex(["code-barres", "code barre", "barcode", "ean"]);
++
+         const items: any[] = [];
+         for (let i = 1; i < lines.length; i++) {
+-          const cols = lines[i].split(delimiter);
+-          const rawName = cols[nameIdx]?.trim().replace(/"/g, "");
++          const cols = decouperLigneCSV(lines[i], delimiter);
++          const rawName = (cols[nameIdx] || "").trim();
+           if (!rawName) continue;
+ 
++          const lireNombre = (idx: number): string =>
++            idx < 0 ? "" : (cols[idx] || "").trim().replace(",", ".");
++
++          // Un prix d'achat vide reste VIDE : on ne l'enregistre surtout pas à 0,
++          // sinon la marge afficherait 100 % de bénéfice sur ce produit.
++          const prixAchatBrut = lireNombre(prixAchatIdx);
++          const prixAchat =
++            prixAchatBrut === "" || Number(prixAchatBrut) <= 0 ? null : prixAchatBrut;
++
+           items.push({
++            // L'identifiant permet de METTRE À JOUR un produit existant au lieu
++            // de créer un doublon. Absent d'un fichier neuf → création.
++            id: idIdx >= 0 ? (cols[idIdx] || "").trim() : "",
+             name: rawName,
+-            category: cols[findIndex(["categorie", "cat"])] || "",
+-            price: parseFloat((cols[findIndex(["prix"])] || "0").replace(",", ".") || "0") || 0,
+-            quantity: parseInt(cols[findIndex(["quantite", "stock"])] || "0") || 0,
+-            lowStock: parseInt(cols[findIndex(["seuil", "alerte"])] || "5") || 5,
+-            description: cols[findIndex(["description"])] || "",
++            category: cols[findIndex(["categorie", "catégorie", "cat"])] || "",
++            price: parseFloat(lireNombre(prixVenteIdx) || "0") || 0,
++            costPrice: prixAchat,
++            quantity: parseInt(lireNombre(quantiteIdx) || "0") || 0,
++            lowStock: parseInt(lireNombre(seuilIdx) || "5") || 5,
++            description: descriptionIdx >= 0 ? cols[descriptionIdx] || "" : "",
++            barcode: codeBarresIdx >= 0 ? (cols[codeBarresIdx] || "").trim() : "",
+           });
+         }
+ 
+@@ -341,7 +443,14 @@ export default function ProductsPage() {
+ 
+         if (res.ok) {
+           const result = await res.json();
+-          alert(`✅ ${result.imported} produit(s) importé(s) avec succès !`);
++          const crees = result.imported ?? 0;
++          const maj = result.updated ?? 0;
++          let message = "✅ ";
++          if (crees > 0) message += `${crees} produit(s) créé(s)`;
++          if (crees > 0 && maj > 0) message += " et ";
++          if (maj > 0) message += `${maj} produit(s) mis à jour`;
++          if (crees === 0 && maj === 0) message += "Aucun produit traité";
++          alert(message + " !");
+           await fetchProducts();
+         } else {
+           alert("Erreur lors de l'import");
+@@ -357,8 +466,26 @@ export default function ProductsPage() {
+   };
+ 
+   const downloadCSVTemplate = () => {
+-    const headers = ["Nom du produit", "Catégorie", "Prix FCFA", "Quantité", "Seuil alerte stock", "Description"];
+-    const sample = ["Savon artisanal karité", "Hygiène", "1500", "45", "10", "Savon naturel 100% bio"];
++    const headers = [
++      "Identifiant",
++      "Nom du produit",
++      "Catégorie",
++      "Prix de vente FCFA",
++      "Prix d'achat FCFA",
++      "Quantité",
++      "Seuil alerte stock",
++      "Description",
++    ];
++    const sample = [
++      "",
++      "Savon artisanal karité",
++      "Hygiène",
++      "1500",
++      "850",
++      "45",
++      "10",
++      "Savon naturel 100% bio",
++    ];
+     const csv = "\uFEFF" + headers.join(";") + "\n" + sample.map((c) => `"${c}"`).join(";");
+     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+     const link = document.createElement("a");
+@@ -367,6 +494,30 @@ export default function ProductsPage() {
+     link.click();
+   };
+ 
++  /**
++   * Télécharge tous les produits dans un fichier Excel.
++   * C'est l'outil qui permet de remplir les prix d'achat en 30 minutes au lieu
++   * de 2 h 30 de clics : on exporte, on remplit la colonne dans Excel, on
++   * réimporte (l'identifiant permet de mettre à jour sans créer de doublons).
++   */
++  const downloadCSVExport = async () => {
++    try {
++      setExporting(true);
++      const res = await fetch("/api/products/export");
++      if (!res.ok) throw new Error("Export impossible");
++      const blob = await res.blob();
++      const link = document.createElement("a");
++      link.href = URL.createObjectURL(blob);
++      link.download = `produits-${new Date().toISOString().slice(0, 10)}.csv`;
++      link.click();
++      URL.revokeObjectURL(link.href);
++    } catch {
++      alert("Impossible de télécharger le fichier. Réessayez.");
++    } finally {
++      setExporting(false);
++    }
++  };
++
+   const filtered = products.filter((p) =>
+     (p.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+     (p.category || "").toLowerCase().includes(searchTerm.toLowerCase())
+@@ -405,6 +556,16 @@ export default function ProductsPage() {
+                   <Download size={18} /> Modèle CSV
+                 </button>
+ 
++                <button
++                  onClick={downloadCSVExport}
++                  disabled={exporting || products.length === 0}
++                  title="Télécharge tous vos produits dans un fichier Excel, colonne « Prix d'achat » à remplir"
++                  className="flex-1 sm:flex-none px-4 py-2.5 border border-[#25D366]/40 text-[#1a8f45] rounded-xl flex items-center justify-center gap-2 text-sm disabled:opacity-60 active:scale-[0.985] transition-all"
++                >
++                  <Download size={18} />
++                  {exporting ? "Export..." : "Exporter mes produits"}
++                </button>
++
+                 <button 
+                   onClick={() => setShowForm(!showForm)} 
+                   disabled={creating || restocking || deletingAll}
+@@ -443,7 +604,11 @@ export default function ProductsPage() {
+               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <input placeholder="Nom du produit *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" required />
+                 <input placeholder="Catégorie" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" />
+-                <input placeholder="Prix FCFA *" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" required />
++                <input placeholder="Prix de vente FCFA *" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" required />
++                {/* Prix d'achat : FACULTATIF. Il sert à calculer la marge.
++                    On ne le rend pas obligatoire, sinon les 130 produits déjà
++                    enregistrés deviendraient impossibles à modifier. */}
++                <input placeholder="Prix d'achat FCFA (pour la marge)" type="number" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" />
+                 <input placeholder="Quantité en stock *" type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" required />
+                 <input placeholder="Seuil alerte stock" type="number" value={form.lowStock} onChange={(e) => setForm({ ...form, lowStock: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" />
+                 <select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base">
+@@ -594,6 +759,23 @@ export default function ProductsPage() {
+                         <h3 className="font-semibold text-[10.5px] sm:text-xs text-[#3D2B1F] leading-tight line-clamp-2 break-words min-w-0">{p.name}</h3>
+                         <span className="text-[#B87333] font-bold text-[10px] sm:text-xs whitespace-nowrap flex-shrink-0">{formatPrice(p.price)}</span>
+                       </div>
++                      {/* Marge : affichée seulement si le prix d'achat est connu.
++                          Sans prix d'achat, on n'invente rien — on n'affiche rien. */}
++                      {p.costPrice !== null &&
++                        p.costPrice !== undefined &&
++                        p.price > 0 && (
++                          <p className="text-[9px] text-[#5C4033]/70 truncate">
++                            Achat {formatPrice(p.costPrice)} ·{" "}
++                            <span
++                              className={
++                                p.price - p.costPrice > 0 ? "text-green-700" : "text-red-600"
++                              }
++                            >
++                              marge {formatPrice(p.price - p.costPrice)} (
++                              {Math.round(((p.price - p.costPrice) / p.price) * 100)}%)
++                            </span>
++                          </p>
++                        )}
+                       {p.category && <p className="text-[9px] text-[#5C4033]/70 truncate">{p.category}</p>}
+                       {p.supplier && <p className="text-[8px] text-[#B87333] truncate">Fourn. : {p.supplier.name}</p>}
+                       {p.barcode && (
+@@ -713,7 +895,8 @@ export default function ProductsPage() {
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                   <input placeholder="Nom du produit *" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" required />
+                   <input placeholder="Catégorie" value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" />
+-                  <input placeholder="Prix FCFA *" type="number" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" required />
++                  <input placeholder="Prix de vente FCFA *" type="number" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" required />
++                  <input placeholder="Prix d'achat FCFA (pour la marge)" type="number" value={editForm.costPrice} onChange={(e) => setEditForm({ ...editForm, costPrice: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" />
+                   <input placeholder="Quantité" type="number" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" />
+                   <input placeholder="Seuil alerte" type="number" value={editForm.lowStock} onChange={(e) => setEditForm({ ...editForm, lowStock: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" />
+                   <select value={editForm.supplierId} onChange={(e) => setEditForm({ ...editForm, supplierId: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20">
+diff --git a/src/app/reports/page.tsx b/src/app/reports/page.tsx
+index 506f5a2..2b887aa 100644
+--- a/src/app/reports/page.tsx
++++ b/src/app/reports/page.tsx
+@@ -17,6 +17,8 @@ import {
+   Target,
+   DollarSign,
+   TrendingDown,
++  Coins,
++  PiggyBank,
+ } from "lucide-react";
+ import {
+   LineChart,
+@@ -160,6 +162,25 @@ export default function ReportsPage() {
+                 icon={CreditCard}
+                 gradient="from-[#D4AF37]/20 to-[#C5A028]/10"
+               />
++              {/* ═══════════════ LE BÉNÉFICE ═══════════════
++                  C'est la vraie nouveauté de cette page. Avant, le commerçant
++                  voyait ce qu'il encaissait, jamais ce qui lui restait. */}
++              <StatCard
++                title="Bénéfice estimé"
++                value={
++                  data?.margeEstimee !== null && data?.margeEstimee !== undefined
++                    ? `${formatPrice(data.margeEstimee)} FCFA`
++                    : "—"
++                }
++                icon={PiggyBank}
++                gradient="from-green-100/70 to-[#F5E6C8]/20"
++              />
++              <StatCard
++                title="Coût des marchandises"
++                value={`${formatPrice(data?.coutTotal || 0)} FCFA`}
++                icon={Coins}
++                gradient="from-[#EBD5A3]/40 to-[#F5E6C8]/20"
++              />
+               <StatCard
+                 title="Nombre de ventes"
+                 value={data?.totalSales || 0}
+@@ -186,11 +207,72 @@ export default function ReportsPage() {
+               />
+             </div>
+ 
++            {/* ═══════════ EXPLICATION DE LA MARGE ═══════════
++                On explique d'où vient le chiffre au lieu de le livrer brut.
++                Un bénéfice calculé sur 12 % des ventes n'a pas la même valeur
++                qu'un bénéfice calculé sur 95 % : le commerçant doit le savoir. */}
++            {data && data.totalSales > 0 && (
++              <div
++                className={`glass rounded-2xl p-5 border-l-4 ${
++                  data.margeFiable
++                    ? "border-green-500/60"
++                    : "border-[#D4AF37]"
++                }`}
++              >
++                <div className="flex items-start gap-3">
++                  <PiggyBank
++                    size={20}
++                    className={data.margeFiable ? "text-green-600 mt-0.5" : "text-[#B87333] mt-0.5"}
++                  />
++                  <div className="flex-1 min-w-0">
++                    {data.margeFiable ? (
++                      <>
++                        <p className="font-semibold text-[#3D2B1F]">
++                          Bénéfice sur la période :{" "}
++                          <span className="text-green-700">
++                            {formatPrice(data.margeBrute)} FCFA
++                          </span>{" "}
++                          {data.tauxMarge !== null && (
++                            <span className="font-normal text-[#5C4033]/80">
++                              ({data.tauxMarge} % de marge)
++                            </span>
++                          )}
++                        </p>
++                        <p className="text-sm text-[#5C4033]/80 mt-1">
++                          Calculé sur {Math.round(data.tauxCouverture)} % de votre chiffre
++                          d&apos;affaires (les articles dont le prix d&apos;achat est
++                          renseigné). Marge moyenne par vente :{" "}
++                          {formatPrice(data.margeMoyenneParVente)} FCFA.
++                        </p>
++                      </>
++                    ) : (
++                      <>
++                        <p className="font-semibold text-[#3D2B1F]">
++                          Prix d&apos;achat manquants
++                        </p>
++                        <p className="text-sm text-[#5C4033]/80 mt-1">
++                          Seulement {Math.round(data.tauxCouverture)} % de votre chiffre
++                          d&apos;affaires porte sur des articles dont le prix d&apos;achat
++                          est renseigné. Le bénéfice affiché est donc une{" "}
++                          <strong>estimation</strong>, pas un chiffre exact.
++                          <br />
++                          Pour le rendre fiable : page Stock → onglet{" "}
++                          <strong>Marges</strong> → bouton{" "}
++                          <strong>« Exporter mes produits »</strong>, remplissez la
++                          colonne « Prix d&apos;achat » dans Excel, puis réimportez.
++                        </p>
++                      </>
++                    )}
++                  </div>
++                </div>
++              </div>
++            )}
++
+             {/* Sales chart */}
+             <div className="glass rounded-2xl p-6 tilt-card">
+               <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#3D2B1F] mb-5 flex items-center gap-2">
+                 <span className="w-1.5 h-6 rounded-full bg-gradient-to-b from-[#D4AF37] to-[#B87333]" />
+-                Évolution des ventes
++                Évolution des ventes et du bénéfice
+               </h2>
+               <div className="h-80">
+                 <ResponsiveContainer width="100%" height="100%">
+@@ -204,6 +286,9 @@ export default function ReportsPage() {
+                         contentStyle={{ backgroundColor: "rgba(255, 252, 248, 0.95)", border: "1px solid rgba(212, 175, 55, 0.3)", borderRadius: "12px" }}
+                       />
+                       <Bar dataKey="amount" fill="#D4AF37" name="Chiffre d'affaires" radius={[6, 6, 0, 0]} />
++                      {/* La marge à côté du chiffre d'affaires : on voit tout de
++                          suite si une hausse des ventes profite vraiment. */}
++                      <Bar dataKey="marge" fill="#4CAF50" name="Bénéfice" radius={[6, 6, 0, 0]} />
+                     </BarChart>
+                   ) : (
+                     <LineChart data={data?.dailyData || []}>
+@@ -223,6 +308,15 @@ export default function ReportsPage() {
+                         activeDot={{ r: 6, fill: "#D4AF37" }}
+                         name="Chiffre d'affaires"
+                       />
++                      <Line
++                        type="monotone"
++                        dataKey="marge"
++                        stroke="#4CAF50"
++                        strokeWidth={2}
++                        strokeDasharray="6 3"
++                        dot={{ fill: "#4CAF50", r: 3 }}
++                        name="Bénéfice"
++                      />
+                     </LineChart>
+                   )}
+                 </ResponsiveContainer>
+@@ -308,14 +402,24 @@ export default function ReportsPage() {
+                       <th className="px-6 py-4 font-semibold text-[#5C4033]">Produit</th>
+                       <th className="px-6 py-4 font-semibold text-[#5C4033]">Quantité vendue</th>
+                       <th className="px-6 py-4 font-semibold text-[#5C4033]">Chiffre d'affaires</th>
++                      <th className="px-6 py-4 font-semibold text-[#5C4033] text-right">Bénéfice</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-[#D4AF37]/10">
+                     {data?.topProducts?.map((p: any) => (
+-                      <tr key={p.name} className="hover:bg-[#FDF6E3]/30 transition-colors duration-300">
++                      <tr key={p.id || p.name} className="hover:bg-[#FDF6E3]/30 transition-colors duration-300">
+                         <td className="px-6 py-4 font-medium text-[#3D2B1F]">{p.name}</td>
+                         <td className="px-6 py-4 text-[#5C4033]">{p.quantity}</td>
+                         <td className="px-6 py-4 text-[#B87333] font-semibold">{formatPrice(p.revenue)} FCFA</td>
++                        <td className="px-6 py-4 text-right">
++                          {p.cout > 0 ? (
++                            <span className={p.marge >= 0 ? "font-semibold text-green-700" : "font-semibold text-red-600"}>
++                              {formatPrice(p.marge)} FCFA
++                            </span>
++                          ) : (
++                            <span className="text-xs text-[#5C4033]/40">prix d&apos;achat inconnu</span>
++                          )}
++                        </td>
+                       </tr>
+                     ))}
+                   </tbody>
+@@ -329,6 +433,76 @@ export default function ReportsPage() {
+               )}
+             </div>
+ 
++            {/* ═══════ LES PRODUITS LES PLUS RENTABLES ═══════
++                Souvent TRÈS différent du classement des plus vendus : un article
++                vendu 100 fois avec 100 FCFA de marge rapporte moins qu'un article
++                vendu 20 fois avec 1 000 FCFA. C'est ce tableau qui montre où est
++                vraiment l'argent. */}
++            {data?.topMarginProducts && data.topMarginProducts.length > 0 && (
++              <div className="glass rounded-2xl p-6 tilt-card">
++                <div className="flex items-center gap-2 mb-5">
++                  <PiggyBank size={20} className="text-green-600" />
++                  <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#3D2B1F]">
++                    Vos produits les plus rentables
++                  </h2>
++                </div>
++                <div className="overflow-x-auto">
++                  <table className="w-full text-sm min-w-[620px]">
++                    <thead className="bg-[#FDF6E3]/50 text-left">
++                      <tr>
++                        <th className="px-6 py-4 font-semibold text-[#5C4033]">Produit</th>
++                        <th className="px-6 py-4 font-semibold text-[#5C4033] text-center">
++                          Vendu
++                        </th>
++                        <th className="px-6 py-4 font-semibold text-[#5C4033] text-right">
++                          Chiffre d&apos;affaires
++                        </th>
++                        <th className="px-6 py-4 font-semibold text-[#5C4033] text-right">
++                          Coût
++                        </th>
++                        <th className="px-6 py-4 font-semibold text-[#5C4033] text-right">
++                          Bénéfice
++                        </th>
++                      </tr>
++                    </thead>
++                    <tbody className="divide-y divide-[#D4AF37]/10">
++                      {data.topMarginProducts.map((p: any) => (
++                        <tr
++                          key={p.id || p.name}
++                          className="hover:bg-[#FDF6E3]/30 transition-colors duration-300"
++                        >
++                          <td className="px-6 py-4 font-medium text-[#3D2B1F]">{p.name}</td>
++                          <td className="px-6 py-4 text-center text-[#5C4033]">
++                            {p.quantity}
++                          </td>
++                          <td className="px-6 py-4 text-right text-[#5C4033]">
++                            {formatPrice(p.revenue)} FCFA
++                          </td>
++                          <td className="px-6 py-4 text-right text-[#5C4033]/80">
++                            {formatPrice(p.cout)} FCFA
++                          </td>
++                          <td className="px-6 py-4 text-right">
++                            <span
++                              className={`font-semibold ${
++                                p.marge >= 0 ? "text-green-700" : "text-red-600"
++                              }`}
++                            >
++                              {formatPrice(p.marge)} FCFA
++                            </span>
++                          </td>
++                        </tr>
++                      ))}
++                    </tbody>
++                  </table>
++                </div>
++                <p className="px-6 pb-4 pt-2 text-xs text-[#5C4033]/70">
++                  Calculé uniquement sur les articles dont le prix d&apos;achat est
++                  renseigné. Les articles sans prix d&apos;achat n&apos;apparaissent pas
++                  ici.
++                </p>
++              </div>
++            )}
++
+             {/* === RÉPARTITION PAR MODE DE PAIEMENT === */}
+             <div className="glass rounded-2xl p-6 tilt-card">
+               <h2 className="font-[family-name:var(--font-playfair)] text-xl font-semibold text-[#3D2B1F] mb-5 flex items-center gap-2">
+diff --git a/src/lib/backup/export.ts b/src/lib/backup/export.ts
+index b102d86..2862392 100644
+--- a/src/lib/backup/export.ts
++++ b/src/lib/backup/export.ts
+@@ -17,7 +17,10 @@ import { gzipSync, gunzipSync } from "zlib";
+  * ============================================================================
+  */
+ 
+-export const VERSION_INSTANTANE = 1;
++// v2 : ajout du prix d'achat (costPrice sur les produits et les lignes de
++//      vente, unitPrice sur les mouvements de stock).
++//      Les sauvegardes v1 restent lisibles : les champs manquants valent null.
++export const VERSION_INSTANTANE = 2;
+ const TAILLE_PAQUET = 500;
+ 
+ export interface ResumeInstantane {
+@@ -112,6 +115,9 @@ export async function exporterBoutique(userId: string): Promise<InstantaneBoutiq
+   /* ── Données simples (petits volumes) ─────────────────────────────────── */
+   const [products, customers, suppliers, promotions, employees, cashSessions] =
+     await Promise.all([
++      // ⚠️  Pas de « select » ici, volontairement : on veut TOUS les champs,
++      // y compris costPrice (prix d'achat) et barcode. Un « select » explicite
++      // ferait perdre silencieusement les futurs champs ajoutés au modèle.
+       prisma.product.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+       prisma.customer.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+       prisma.supplier.findMany({ where: { userId }, orderBy: { createdAt: "asc" } }),
+diff --git a/src/lib/backup/restore.ts b/src/lib/backup/restore.ts
+index 45f5087..33aec0e 100644
+--- a/src/lib/backup/restore.ts
++++ b/src/lib/backup/restore.ts
+@@ -173,6 +173,11 @@ async function insererDonnees(
+         name: p.name,
+         description: p.description ?? null,
+         price: p.price,
++        // ⚠️  Le prix d'achat DOIT être restauré, sinon une restauration
++        // effacerait tout le travail de saisie des marges. Le « ?? null »
++        // permet aussi de restaurer les ANCIENNES sauvegardes (faites avant
++        // l'ajout de ce champ), qui ne le contiennent pas.
++        costPrice: p.costPrice ?? null,
+         quantity: p.quantity ?? 0,
+         lowStock: p.lowStock ?? 5,
+         category: p.category ?? null,
+@@ -347,6 +352,9 @@ async function insererDonnees(
+           id: it.id,
+           quantity: it.quantity,
+           price: it.price,
++          // Prix d'achat figé au moment de la vente (absent des anciennes
++          // sauvegardes → null, la marge sera simplement inconnue).
++          costPrice: it.costPrice ?? null,
+           saleId: s.id,
+           productId: it.productId,
+         }))
+@@ -455,6 +463,7 @@ async function insererDonnees(
+         id: m.id,
+         quantity: m.quantity,
+         note: m.note ?? null,
++        unitPrice: m.unitPrice ?? null,
+         createdAt: new Date(m.createdAt),
+         productId: m.productId,
+         userId,

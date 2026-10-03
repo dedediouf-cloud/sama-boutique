@@ -84,6 +84,13 @@ export async function PATCH(
     if (body.name !== undefined) updateData.name = body.name;
     if (body.description !== undefined) updateData.description = body.description;
     if (body.price !== undefined) updateData.price = parseFloat(body.price);
+    // Prix d'achat : champ FACULTATIF. Une chaîne vide ou null doit remettre
+    // le champ à « non renseigné » (et non écrire 0, ce qui fausserait la marge).
+    if (body.costPrice !== undefined) {
+      const brut = body.costPrice;
+      updateData.costPrice =
+        brut === null || brut === "" ? null : Number.isFinite(Number(brut)) ? Number(brut) : null;
+    }
     if (body.quantity !== undefined) updateData.quantity = parseInt(body.quantity);
     if (body.lowStock !== undefined) updateData.lowStock = parseInt(body.lowStock);
     if (body.category !== undefined) updateData.category = body.category;

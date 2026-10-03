@@ -26,11 +26,12 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
   const [form, setForm] = useState({
-    name: "", description: "", price: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "", barcode: "",
+    name: "", description: "", price: "", costPrice: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "", barcode: "",
   });
 
   const [restockForm, setRestockForm] = useState({
@@ -39,7 +40,7 @@ export default function ProductsPage() {
 
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [editForm, setEditForm] = useState({
-    name: "", description: "", price: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "", barcode: "",
+    name: "", description: "", price: "", costPrice: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "", barcode: "",
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [restocking, setRestocking] = useState(false);
@@ -87,6 +88,10 @@ export default function ProductsPage() {
       name: product.name || "",
       description: product.description || "",
       price: product.price?.toString() || "",
+      costPrice:
+        product.costPrice !== null && product.costPrice !== undefined
+          ? product.costPrice.toString()
+          : "",
       quantity: product.quantity?.toString() || "",
       lowStock: (product.lowStock || 5).toString(),
       category: product.category || "",
@@ -98,7 +103,7 @@ export default function ProductsPage() {
 
   const closeEdit = () => {
     setEditingProduct(null);
-    setEditForm({ name: "", description: "", price: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "", barcode: "" });
+    setEditForm({ name: "", description: "", price: "", costPrice: "", quantity: "", lowStock: "", category: "", imageUrl: "", supplierId: "", barcode: "" });
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
@@ -123,6 +128,12 @@ export default function ProductsPage() {
           name: editForm.name,
           description: editForm.description,
           price: parseFloat(editForm.price),
+          // On envoie TOUJOURS costPrice en modification (même null), pour que
+          // vider le champ permette réellement d'effacer un prix d'achat erroné.
+          costPrice:
+            editForm.costPrice === "" || parseFloat(editForm.costPrice) <= 0
+              ? null
+              : parseFloat(editForm.costPrice),
           quantity: parseInt(editForm.quantity) || 0,
           lowStock: parseInt(editForm.lowStock) || 5,
           category: editForm.category,
@@ -166,6 +177,12 @@ export default function ProductsPage() {
         body: JSON.stringify({
           ...form,
           price: parseFloat(form.price) || 0,
+          // null (et non 0) quand le champ est vide : « pas renseigné ».
+          // Un 0 ferait croire à une marge de 100 % sur ce produit.
+          costPrice:
+            form.costPrice === "" || parseFloat(form.costPrice) <= 0
+              ? null
+              : parseFloat(form.costPrice),
           quantity: parseInt(form.quantity) || 0,
           lowStock: parseInt(form.lowStock) || 5,
           imageUrl: form.imageUrl || null,
@@ -175,7 +192,7 @@ export default function ProductsPage() {
       });
 
       if (res.ok) {
-        setForm({ name: "", description: "", price: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "", barcode: "" });
+        setForm({ name: "", description: "", price: "", costPrice: "", quantity: "", lowStock: "5", category: "", imageUrl: "", supplierId: "", barcode: "" });
         setShowForm(false);
         await fetchProducts();
         alert("Produit enregistré avec succès !");
@@ -245,8 +262,14 @@ export default function ProductsPage() {
       productName: product.name,
       quantity: "",
       note: "",
-      supplierId: "",
-      unitPrice: "",
+      supplierId: product.supplierId || "",
+      // ⚡ Le dernier prix d'achat connu est pré-rempli : dans la vraie vie, on
+      // rachète souvent au même prix. Le commerçant n'a qu'à corriger si le
+      // fournisseur a augmenté. S'il n'y a pas encore de prix, le champ est vide.
+      unitPrice:
+        product.costPrice !== null && product.costPrice !== undefined
+          ? String(product.costPrice)
+          : "",
     });
   };
 
@@ -278,6 +301,46 @@ export default function ProductsPage() {
     }
   };
 
+  /**
+   * Découpe une ligne CSV en respectant les guillemets.
+   *
+   * ⚠️  POURQUOI CE N'EST PAS JUSTE « ligne.split(";") » :
+   * une description comme « Savon 100% bio ; sans parfum » contient elle-même
+   * des points-virgules. L'export la protège en l'entourant de guillemets, mais
+   * un simple split la découperait en morceaux → colonnes décalées, et un prix
+   * attribué au mauvais produit. Cette fonction gère les guillemets et les
+   * guillemets doublés (« "" » représente un guillemet réel).
+   */
+  const decouperLigneCSV = (ligne: string, delimiteur: string): string[] => {
+    const valeurs: string[] = [];
+    let courant = "";
+    let entreGuillemets = false;
+    for (let i = 0; i < ligne.length; i++) {
+      const c = ligne[i];
+      if (entreGuillemets) {
+        if (c === '"') {
+          if (ligne[i + 1] === '"') {
+            courant += '"';
+            i++;
+          } else {
+            entreGuillemets = false;
+          }
+        } else {
+          courant += c;
+        }
+      } else if (c === '"') {
+        entreGuillemets = true;
+      } else if (c === delimiteur) {
+        valeurs.push(courant);
+        courant = "";
+      } else {
+        courant += c;
+      }
+    }
+    valeurs.push(courant);
+    return valeurs.map((v) => v.trim());
+  };
+
   const handleCSVImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -295,10 +358,19 @@ export default function ProductsPage() {
         }
 
         const delimiter = lines[0].includes(";") ? ";" : ",";
-        const headers = lines[0].split(delimiter).map((h) => h.trim().toLowerCase().replace(/"/g, ""));
+        const headers = decouperLigneCSV(lines[0], delimiter).map((h) =>
+          h.toLowerCase().replace(/"/g, "")
+        );
 
-        const findIndex = (possible: string[]) => {
+        /**
+         * Cherche la position d'une colonne.
+         * ⚠️  « excludes » est indispensable : sans lui, chercher « prix »
+         * trouverait aussi « Prix d'achat FCFA » (premier arrivé, premier
+         * servi), et le prix d'achat serait enregistré comme prix de vente.
+         */
+        const findIndex = (possible: string[], excludes: string[] = []) => {
           for (let i = 0; i < headers.length; i++) {
+            if (excludes.some((e) => headers[i].includes(e))) continue;
             if (possible.some((p) => headers[i].includes(p))) return i;
           }
           return -1;
@@ -311,19 +383,49 @@ export default function ProductsPage() {
           return;
         }
 
+        // Colonnes reconnues dans le fichier
+        const idIdx = findIndex(["identifiant", "id produit"]);
+        const prixVenteIdx = findIndex(["prix de vente", "prix vente", "prix"], ["achat"]);
+        const prixAchatIdx = findIndex([
+          "prix d'achat",
+          "prix achat",
+          "achat",
+          "cout",
+          "coût",
+          "cost",
+        ]);
+        const quantiteIdx = findIndex(["quantite", "quantité", "stock"]);
+        const seuilIdx = findIndex(["seuil", "alerte"]);
+        const descriptionIdx = findIndex(["description"]);
+        const codeBarresIdx = findIndex(["code-barres", "code barre", "barcode", "ean"]);
+
         const items: any[] = [];
         for (let i = 1; i < lines.length; i++) {
-          const cols = lines[i].split(delimiter);
-          const rawName = cols[nameIdx]?.trim().replace(/"/g, "");
+          const cols = decouperLigneCSV(lines[i], delimiter);
+          const rawName = (cols[nameIdx] || "").trim();
           if (!rawName) continue;
 
+          const lireNombre = (idx: number): string =>
+            idx < 0 ? "" : (cols[idx] || "").trim().replace(",", ".");
+
+          // Un prix d'achat vide reste VIDE : on ne l'enregistre surtout pas à 0,
+          // sinon la marge afficherait 100 % de bénéfice sur ce produit.
+          const prixAchatBrut = lireNombre(prixAchatIdx);
+          const prixAchat =
+            prixAchatBrut === "" || Number(prixAchatBrut) <= 0 ? null : prixAchatBrut;
+
           items.push({
+            // L'identifiant permet de METTRE À JOUR un produit existant au lieu
+            // de créer un doublon. Absent d'un fichier neuf → création.
+            id: idIdx >= 0 ? (cols[idIdx] || "").trim() : "",
             name: rawName,
-            category: cols[findIndex(["categorie", "cat"])] || "",
-            price: parseFloat((cols[findIndex(["prix"])] || "0").replace(",", ".") || "0") || 0,
-            quantity: parseInt(cols[findIndex(["quantite", "stock"])] || "0") || 0,
-            lowStock: parseInt(cols[findIndex(["seuil", "alerte"])] || "5") || 5,
-            description: cols[findIndex(["description"])] || "",
+            category: cols[findIndex(["categorie", "catégorie", "cat"])] || "",
+            price: parseFloat(lireNombre(prixVenteIdx) || "0") || 0,
+            costPrice: prixAchat,
+            quantity: parseInt(lireNombre(quantiteIdx) || "0") || 0,
+            lowStock: parseInt(lireNombre(seuilIdx) || "5") || 5,
+            description: descriptionIdx >= 0 ? cols[descriptionIdx] || "" : "",
+            barcode: codeBarresIdx >= 0 ? (cols[codeBarresIdx] || "").trim() : "",
           });
         }
 
@@ -341,7 +443,14 @@ export default function ProductsPage() {
 
         if (res.ok) {
           const result = await res.json();
-          alert(`✅ ${result.imported} produit(s) importé(s) avec succès !`);
+          const crees = result.imported ?? 0;
+          const maj = result.updated ?? 0;
+          let message = "✅ ";
+          if (crees > 0) message += `${crees} produit(s) créé(s)`;
+          if (crees > 0 && maj > 0) message += " et ";
+          if (maj > 0) message += `${maj} produit(s) mis à jour`;
+          if (crees === 0 && maj === 0) message += "Aucun produit traité";
+          alert(message + " !");
           await fetchProducts();
         } else {
           alert("Erreur lors de l'import");
@@ -357,14 +466,56 @@ export default function ProductsPage() {
   };
 
   const downloadCSVTemplate = () => {
-    const headers = ["Nom du produit", "Catégorie", "Prix FCFA", "Quantité", "Seuil alerte stock", "Description"];
-    const sample = ["Savon artisanal karité", "Hygiène", "1500", "45", "10", "Savon naturel 100% bio"];
+    const headers = [
+      "Identifiant",
+      "Nom du produit",
+      "Catégorie",
+      "Prix de vente FCFA",
+      "Prix d'achat FCFA",
+      "Quantité",
+      "Seuil alerte stock",
+      "Description",
+    ];
+    const sample = [
+      "",
+      "Savon artisanal karité",
+      "Hygiène",
+      "1500",
+      "850",
+      "45",
+      "10",
+      "Savon naturel 100% bio",
+    ];
     const csv = "\uFEFF" + headers.join(";") + "\n" + sample.map((c) => `"${c}"`).join(";");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "modele_stock.csv";
     link.click();
+  };
+
+  /**
+   * Télécharge tous les produits dans un fichier Excel.
+   * C'est l'outil qui permet de remplir les prix d'achat en 30 minutes au lieu
+   * de 2 h 30 de clics : on exporte, on remplit la colonne dans Excel, on
+   * réimporte (l'identifiant permet de mettre à jour sans créer de doublons).
+   */
+  const downloadCSVExport = async () => {
+    try {
+      setExporting(true);
+      const res = await fetch("/api/products/export");
+      if (!res.ok) throw new Error("Export impossible");
+      const blob = await res.blob();
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `produits-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch {
+      alert("Impossible de télécharger le fichier. Réessayez.");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const filtered = products.filter((p) =>
@@ -405,6 +556,16 @@ export default function ProductsPage() {
                   <Download size={18} /> Modèle CSV
                 </button>
 
+                <button
+                  onClick={downloadCSVExport}
+                  disabled={exporting || products.length === 0}
+                  title="Télécharge tous vos produits dans un fichier Excel, colonne « Prix d'achat » à remplir"
+                  className="flex-1 sm:flex-none px-4 py-2.5 border border-[#25D366]/40 text-[#1a8f45] rounded-xl flex items-center justify-center gap-2 text-sm disabled:opacity-60 active:scale-[0.985] transition-all"
+                >
+                  <Download size={18} />
+                  {exporting ? "Export..." : "Exporter mes produits"}
+                </button>
+
                 <button 
                   onClick={() => setShowForm(!showForm)} 
                   disabled={creating || restocking || deletingAll}
@@ -443,7 +604,11 @@ export default function ProductsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <input placeholder="Nom du produit *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" required />
                 <input placeholder="Catégorie" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" />
-                <input placeholder="Prix FCFA *" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" required />
+                <input placeholder="Prix de vente FCFA *" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" required />
+                {/* Prix d'achat : FACULTATIF. Il sert à calculer la marge.
+                    On ne le rend pas obligatoire, sinon les 130 produits déjà
+                    enregistrés deviendraient impossibles à modifier. */}
+                <input placeholder="Prix d'achat FCFA (pour la marge)" type="number" value={form.costPrice} onChange={(e) => setForm({ ...form, costPrice: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" />
                 <input placeholder="Quantité en stock *" type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" required />
                 <input placeholder="Seuil alerte stock" type="number" value={form.lowStock} onChange={(e) => setForm({ ...form, lowStock: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base" />
                 <select value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })} className="input-warm p-3 rounded-xl text-sm sm:text-base">
@@ -594,6 +759,23 @@ export default function ProductsPage() {
                         <h3 className="font-semibold text-[10.5px] sm:text-xs text-[#3D2B1F] leading-tight line-clamp-2 break-words min-w-0">{p.name}</h3>
                         <span className="text-[#B87333] font-bold text-[10px] sm:text-xs whitespace-nowrap flex-shrink-0">{formatPrice(p.price)}</span>
                       </div>
+                      {/* Marge : affichée seulement si le prix d'achat est connu.
+                          Sans prix d'achat, on n'invente rien — on n'affiche rien. */}
+                      {p.costPrice !== null &&
+                        p.costPrice !== undefined &&
+                        p.price > 0 && (
+                          <p className="text-[9px] text-[#5C4033]/70 truncate">
+                            Achat {formatPrice(p.costPrice)} ·{" "}
+                            <span
+                              className={
+                                p.price - p.costPrice > 0 ? "text-green-700" : "text-red-600"
+                              }
+                            >
+                              marge {formatPrice(p.price - p.costPrice)} (
+                              {Math.round(((p.price - p.costPrice) / p.price) * 100)}%)
+                            </span>
+                          </p>
+                        )}
                       {p.category && <p className="text-[9px] text-[#5C4033]/70 truncate">{p.category}</p>}
                       {p.supplier && <p className="text-[8px] text-[#B87333] truncate">Fourn. : {p.supplier.name}</p>}
                       {p.barcode && (
@@ -713,7 +895,8 @@ export default function ProductsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <input placeholder="Nom du produit *" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" required />
                   <input placeholder="Catégorie" value={editForm.category} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" />
-                  <input placeholder="Prix FCFA *" type="number" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" required />
+                  <input placeholder="Prix de vente FCFA *" type="number" value={editForm.price} onChange={(e) => setEditForm({ ...editForm, price: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" required />
+                  <input placeholder="Prix d'achat FCFA (pour la marge)" type="number" value={editForm.costPrice} onChange={(e) => setEditForm({ ...editForm, costPrice: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" />
                   <input placeholder="Quantité" type="number" value={editForm.quantity} onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" />
                   <input placeholder="Seuil alerte" type="number" value={editForm.lowStock} onChange={(e) => setEditForm({ ...editForm, lowStock: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20" />
                   <select value={editForm.supplierId} onChange={(e) => setEditForm({ ...editForm, supplierId: e.target.value })} className="w-full p-2.5 rounded-xl border border-[#D4AF37]/20">

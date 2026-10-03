@@ -173,6 +173,11 @@ async function insererDonnees(
         name: p.name,
         description: p.description ?? null,
         price: p.price,
+        // ⚠️  Le prix d'achat DOIT être restauré, sinon une restauration
+        // effacerait tout le travail de saisie des marges. Le « ?? null »
+        // permet aussi de restaurer les ANCIENNES sauvegardes (faites avant
+        // l'ajout de ce champ), qui ne le contiennent pas.
+        costPrice: p.costPrice ?? null,
         quantity: p.quantity ?? 0,
         lowStock: p.lowStock ?? 5,
         category: p.category ?? null,
@@ -347,6 +352,9 @@ async function insererDonnees(
           id: it.id,
           quantity: it.quantity,
           price: it.price,
+          // Prix d'achat figé au moment de la vente (absent des anciennes
+          // sauvegardes → null, la marge sera simplement inconnue).
+          costPrice: it.costPrice ?? null,
           saleId: s.id,
           productId: it.productId,
         }))
@@ -455,6 +463,7 @@ async function insererDonnees(
         id: m.id,
         quantity: m.quantity,
         note: m.note ?? null,
+        unitPrice: m.unitPrice ?? null,
         createdAt: new Date(m.createdAt),
         productId: m.productId,
         userId,
